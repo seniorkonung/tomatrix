@@ -12,5 +12,6 @@
   100% { transform: scale(1); }
 }
 
-/* Потянуть страницу вниз — раскрыть календарь, а не обновить страницу */
-html { background: var(--color-stone-50); overscroll-behavior-y: none; }
+/* Потянуть страницу вниз — раскрыть календарь, а не обновить страницу.
+   Раскрытый календарь сдвигает ленту вниз, а не наезжает на неё */
+html { background: var(--color-stone-50); overscroll-behavior-y: none; overflow-anchor: none; }

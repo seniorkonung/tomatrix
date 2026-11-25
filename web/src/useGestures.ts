@@ -13,8 +13,9 @@ type Handlers = {
   onSwipe: (direction: 1 | -1, inCalendar: boolean) => void
 }
 
-// Жесты страницы: потянуть вниз в начале страницы — раскрыть календарь, вверх — свернуть,
-// свайп влево или вправо — сменить дату
+// Жесты страницы: потянуть вниз в начале страницы или по календарю — раскрыть его,
+// вверх по календарю — свернуть; по странице вверх она просто листается.
+// Свайп влево или вправо — сменить дату
 export function useGestures(root: RefObject<HTMLElement | null>, range: number, handlers: Handlers) {
   const latest = useRef(handlers)
   useLayoutEffect(() => {
@@ -48,8 +49,10 @@ export function useGestures(root: RefObject<HTMLElement | null>, range: number, 
         // Иначе браузер начнёт тянуть страницу раньше, чем жест распознан
         if (atTop && dy > 0 && e.cancelable) e.preventDefault()
         if (Math.max(Math.abs(dx), Math.abs(dy)) < DECIDE_PX) return
+        const opens = dy > 0 && g.base === 0 && (atTop || g.inCalendar)
+        const closes = dy < 0 && g.base === 1 && g.inCalendar
         if (Math.abs(dx) > Math.abs(dy)) g.mode = 'h'
-        else if (atTop && ((dy > 0 && g.base === 0) || (dy < 0 && g.base === 1))) g.mode = 'pull'
+        else if (opens || closes) g.mode = 'pull'
         else g.mode = 'none'
       }
       if (g.mode === 'pull') {

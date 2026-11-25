@@ -82,20 +82,23 @@ export default function App() {
   return (
     <div
       ref={root}
-      className="mx-auto flex min-h-dvh max-w-xl touch-pan-y flex-col gap-3 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+      className="mx-auto flex min-h-dvh max-w-xl touch-pan-y flex-col gap-3 px-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
     >
-      <Calendar
-        selected={selected}
-        today={today}
-        month={month ?? startOfMonth(selected)}
-        progress={pull ?? (expanded ? 1 : 0)}
-        dragging={pull !== null}
-        years={years}
-        onSelect={select}
-        onMonth={setMonth}
-        onYears={setYears}
-        onToggle={() => toggleCalendar(!expanded)}
-      />
+      {/* Календарь закреплён наверху экрана и при раскрытии сдвигает страницу */}
+      <div className="sticky top-0 z-10 -mx-3 touch-none bg-stone-50 px-3 pt-[max(0.5rem,env(safe-area-inset-top))]">
+        <Calendar
+          selected={selected}
+          today={today}
+          month={month ?? startOfMonth(selected)}
+          progress={pull ?? (expanded ? 1 : 0)}
+          dragging={pull !== null}
+          years={years}
+          onSelect={select}
+          onMonth={setMonth}
+          onYears={setYears}
+          onToggle={() => toggleCalendar(!expanded)}
+        />
+      </div>
 
       <header className="px-1">
         <div className="flex items-center gap-2 text-stone-500">
