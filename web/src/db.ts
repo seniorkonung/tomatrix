@@ -25,11 +25,15 @@ export type Category = {
   createdAt: number
 }
 
-// Помидор — 20 минут внимания, посвящённые одному или нескольким проектам сразу
-export type Pomodoro = {
+// Поток — отрезок времени длиной в целое число помидоров по 20 минут и сколько из них занимал каждый проект.
+// Каждый проект занимал от 1 до length помидоров; сумма не меньше length, а превышение — время,
+// когда проекты шли параллельно
+export type Flow = {
   id: string
   createdAt: number
-  projectIds: string[]
+  length: number
+  // id проекта → его помидоры в потоке
+  counts: Record<string, number>
 }
 
 // Настройки приложения по ключу
@@ -55,7 +59,7 @@ export const projectColors = [
 export const db = new Dexie('tomatrix') as Dexie & {
   projects: EntityTable<Project, 'id'>
   categories: EntityTable<Category, 'id'>
-  pomodoros: EntityTable<Pomodoro, 'id'>
+  flows: EntityTable<Flow, 'id'>
   settings: EntityTable<Setting, 'id'>
 }
 
@@ -124,6 +128,21 @@ db.version(4)
     })
   })
 
+// Помидоры стали потоками: каждый — поток длиной в один помидор, общий — с несколькими проектами
+db.version(5)
+  .stores({ pomodoros: null, flows: 'id, createdAt' })
+  .upgrade(async (tx) => {
+    const pomodoros = await tx.table('pomodoros').toArray()
+    await tx.table('flows').bulkAdd(
+      pomodoros.map((p) => ({
+        id: p.id,
+        createdAt: p.createdAt,
+        length: 1,
+        counts: Object.fromEntries((p.projectIds as string[]).map((id) => [id, 1])),
+      })),
+    )
+  })
+
 // Новый проект получает цвет, который реже всего встречается у активных проектов, — соседние не сливаются
 export async function createProject(name: string, categoryId: string | null) {
   const active = await db.projects.where('status').equals('active').toArray()
@@ -157,14 +176,11 @@ export async function restoreProject(project: Project) {
   })
 }
 
-// Проект снимается со всех помидоров; помидор только этого проекта удаляется — без проекта его не бывает
+// Проект снимается со всех потоков; поток только этого проекта удаляется
 export async function deleteProject(projectId: string) {
-  await db.transaction('rw', db.projects, db.pomodoros, async () => {
-    const pomodoros = await db.pomodoros.where('projectIds').equals(projectId).toArray()
-    await db.pomodoros.bulkDelete(pomodoros.filter((p) => p.projectIds.length === 1).map((p) => p.id))
-    await db.pomodoros.bulkPut(
-      pomodoros.filter((p) => p.projectIds.length > 1).map((p) => ({ ...p, projectIds: p.projectIds.filter((id) => id !== projectId) })),
-    )
+  await db.transaction('rw', db.projects, db.flows, async () => {
+    const flows = await db.flows.filter((f) => projectId in f.counts).toArray()
+    for (const flow of flows) await removeFromFlow(flow.id, projectId, flow.counts[projectId])
     await db.projects.delete(projectId)
   })
 }
@@ -177,15 +193,28 @@ export async function deleteCategory(categoryId: string) {
   })
 }
 
-// Помидоры в выбранный день получают нынешнее время суток этого дня.
-// Проекты из архива, которым посвящён помидор, возвращаются из него
-export async function addPomodoros(count: number, projects: Project[], day: Date) {
+// Поток в выбранный день получает нынешнее время суток этого дня.
+// Проекты из архива, которым он посвящён, возвращаются из него
+export async function addFlow(length: number, counts: Record<string, number>, projects: Project[], day: Date) {
   const now = new Date()
-  const time = now.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
-  const projectIds = projects.map((p) => p.id)
-  await db.transaction('rw', db.pomodoros, db.projects, db.categories, async () => {
-    // Миллисекунда между помидорами сохраняет их порядок
-    await db.pomodoros.bulkAdd(Array.from({ length: count }, (_, i) => ({ id: crypto.randomUUID(), createdAt: day.getTime() + time + i, projectIds })))
+  const createdAt = day.getTime() + now.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  await db.transaction('rw', db.flows, db.projects, db.categories, async () => {
+    await db.flows.add({ id: crypto.randomUUID(), createdAt, length, counts })
     for (const p of projects) if (p.status === 'archived') await restoreProject(p)
+  })
+}
+
+// Снимает помидоры проекта в потоке. Если распределено стало меньше длины, поток укорачивается;
+// поток без помидоров удаляется. Поток перечитывается: быстрые нажатия подряд видят уже изменённый
+export async function removeFromFlow(flowId: string, projectId: string, count = 1) {
+  await db.transaction('rw', db.flows, async () => {
+    const flow = await db.flows.get(flowId)
+    if (!flow || !(projectId in flow.counts)) return
+    const left = flow.counts[projectId] - count
+    const { [projectId]: _, ...rest } = flow.counts
+    const counts = left > 0 ? { ...rest, [projectId]: left } : rest
+    const sum = Object.values(counts).reduce((a, b) => a + b, 0)
+    if (sum === 0) await db.flows.delete(flow.id)
+    else await db.flows.put({ ...flow, counts, length: Math.min(flow.length, sum) })
   })
 }

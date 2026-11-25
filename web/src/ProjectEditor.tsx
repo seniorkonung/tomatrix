@@ -9,19 +9,22 @@ const dateFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'lo
 export function ProjectEditor({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const project = useLiveQuery(() => db.projects.get(projectId), [projectId])
   const tabs = useProjectTabs()
-  const pomodoros = useLiveQuery(() => db.pomodoros.where('projectIds').equals(projectId).toArray(), [projectId])
-  if (!project || !tabs || !pomodoros) return null
+  const flows = useLiveQuery(() => db.flows.filter((f) => projectId in f.counts).toArray(), [projectId])
+  if (!project || !tabs || !flows) return null
   // Категории в порядке вкладок выбора проектов
   const categories = tabs.flatMap((t) => (t.kind === 'category' ? [t.category] : []))
-  // Помидоры только этого проекта при удалении пропадают, общие остаются у других проектов
-  const own = pomodoros.filter((p) => p.projectIds.length === 1).length
-  return <Form key={project.id} project={project} categories={categories} count={pomodoros.length} own={own} onClose={onClose} />
+  const count = flows.reduce((sum, f) => sum + f.counts[projectId], 0)
+  // Потоки только этого проекта при удалении пропадают целиком, в остальных он просто снимается
+  const own = flows.filter((f) => Object.keys(f.counts).length === 1).length
+  return <Form key={project.id} project={project} categories={categories} count={count} own={own} onClose={onClose} />
 }
 
 type FormProps = {
   project: Project
   categories: { id: string; name: string }[]
+  // Помидоры проекта во всех потоках
   count: number
+  // Потоки только этого проекта
   own: number
   onClose: () => void
 }
@@ -33,10 +36,9 @@ function Form({ project, categories, count, own, onClose }: FormProps) {
   const active = project.status === 'active'
 
   async function remove() {
-    const shared = count - own
     const note = [
-      own ? `${own} ${pluralRu(own, ['помидор', 'помидора', 'помидоров'])} только этого проекта удалятся.` : '',
-      shared ? `С ${shared} ${pluralRu(shared, ['общего помидора', 'общих помидоров', 'общих помидоров'])} проект просто снимется.` : '',
+      count ? `Его ${count} ${pluralRu(count, ['помидор', 'помидора', 'помидоров'])} пропадут.` : '',
+      own ? `${own} ${pluralRu(own, ['поток', 'потока', 'потоков'])}, где был только он, удалятся.` : '',
     ]
       .filter(Boolean)
       .join(' ')

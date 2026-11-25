@@ -2,14 +2,13 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import { AddSheet } from './AddSheet'
 import { ErrorToast } from './ErrorToast'
-import { addPomodoros, db, type Pomodoro } from './db'
+import { addFlow, db, removeFromFlow, type Flow } from './db'
 import { formatMinutes, POMODORO_MINUTES } from './format'
 import { periodLabel, periodOf, startOfDay, type Unit } from './periods'
 import { pluralRu } from './plural'
 import { ProjectCard } from './ProjectCard'
 import { ProjectEditor } from './ProjectEditor'
 import { useProjectTabs } from './projectTabs'
-import { RemoveSheet } from './RemoveSheet'
 import { useSwipe } from './useSwipe'
 
 const unitLabels: Record<Unit, string> = { day: 'День', week: 'Неделя', month: 'Месяц', year: 'Год' }
@@ -37,8 +36,8 @@ export default function App() {
   const root = useRef<HTMLDivElement>(null)
   useSwipe(root, shift)
 
-  const pomodoros = useLiveQuery(
-    () => db.pomodoros.where('createdAt').between(start.getTime(), end.getTime(), true, false).sortBy('createdAt'),
+  const flows = useLiveQuery(
+    () => db.flows.where('createdAt').between(start.getTime(), end.getTime(), true, false).sortBy('createdAt'),
     [start.getTime(), end.getTime()],
   )
   const projects = useLiveQuery(() => db.projects.toArray())
@@ -50,10 +49,9 @@ export default function App() {
 
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [removing, setRemoving] = useState<Pomodoro | null>(null)
 
   // Корень рисуется и до загрузки данных: к нему с первой отрисовки привязан свайп
-  if (!pomodoros || !projects || !tabs || !savedCategories) return <div ref={root} className="min-h-dvh" />
+  if (!flows || !projects || !tabs || !savedCategories) return <div ref={root} className="min-h-dvh" />
 
   // Категории в порядке вкладок выбора проектов; выбранные, но уже удалённые, не считаются
   const categories = tabs.flatMap((t) => (t.kind === 'category' ? [t.category] : []))
@@ -61,26 +59,22 @@ export default function App() {
   const toggleCategory = (id: string | null) =>
     db.settings.put({ id: 'statsCategories', value: chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id] })
 
-  const total = pomodoros.length
-  const byProject = new Map<string, Pomodoro[]>()
-  for (const p of pomodoros) for (const id of p.projectIds) byProject.set(id, [...(byProject.get(id) ?? []), p])
+  // Время — по длине потоков; у проекта — его помидоры в них, клетка на каждый
+  const total = flows.reduce((sum, f) => sum + f.length, 0)
+  const byProject = new Map<string, Flow[]>()
+  for (const f of flows) for (const [id, count] of Object.entries(f.counts)) byProject.set(id, [...(byProject.get(id) ?? []), ...Array<Flow>(count).fill(f)])
   // Проекты в архиве хранят категорию, поэтому отбираются так же, как активные
   const rows = projects
     .filter((project) => chosen.length === 0 || chosen.includes(project.categoryId))
     .flatMap((project) => {
       const own = byProject.get(project.id)
-      return own ? [{ project, pomodoros: own }] : []
+      return own ? [{ project, cells: own }] : []
     })
-    .sort((a, b) => b.pomodoros.length - a.pomodoros.length || a.project.name.localeCompare(b.project.name, 'ru'))
-  const projectsById = new Map(projects.map((p) => [p.id, p]))
+    .sort((a, b) => b.cells.length - a.cells.length || a.project.name.localeCompare(b.project.name, 'ru'))
 
   // Клетка «+» в карточке кладёт помидор туда, где на него смотрят: в показанный день, а в других режимах — в сегодня
   const addDay = unit === 'day' ? start : startOfDay(now)
 
-  function remove(pomodoro: Pomodoro) {
-    if (pomodoro.projectIds.length > 1) setRemoving(pomodoro)
-    else void db.pomodoros.delete(pomodoro.id)
-  }
 
   const tabClass = (active: boolean) => `shrink-0 rounded-full px-3 py-1.5 text-sm ${active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`
   const arrowClass = 'flex size-9 items-center justify-center rounded-full disabled:opacity-30'
@@ -155,15 +149,15 @@ export default function App() {
           </p>
         ) : (
           <ul className="mt-4 flex flex-col gap-2">
-            {rows.map(({ project, pomodoros }) => (
+            {rows.map(({ project, cells }) => (
               <ProjectCard
                 key={project.id}
                 project={project}
-                pomodoros={pomodoros}
+                cells={cells}
                 total={total}
                 onEdit={() => setEditingId(project.id)}
-                onAdd={() => void addPomodoros(1, [project], addDay)}
-                onRemove={remove}
+                onAdd={() => void addFlow(1, { [project.id]: 1 }, [project], addDay)}
+                onRemove={(flow) => void removeFromFlow(flow.id, project.id)}
               />
             ))}
             {rows.length === 0 && <li className="py-4 text-center text-sm text-stone-400">У проектов выбранных категорий нет помидоров за период</li>}
@@ -184,13 +178,6 @@ export default function App() {
 
       {adding && <AddSheet today={startOfDay(now)} onClose={() => setAdding(false)} />}
       {editingId && <ProjectEditor projectId={editingId} onClose={() => setEditingId(null)} />}
-      {removing && (
-        <RemoveSheet
-          pomodoro={removing}
-          projects={removing.projectIds.flatMap((id) => projectsById.get(id) ?? [])}
-          onClose={() => setRemoving(null)}
-        />
-      )}
       <ErrorToast />
     </>
   )
