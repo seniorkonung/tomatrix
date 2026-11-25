@@ -2,10 +2,11 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import { AddSheet } from './AddSheet'
 import { ErrorToast } from './ErrorToast'
-import { addFlow, db, removeFromFlow, type Flow } from './db'
+import { addFlow, db, removeFromFlow } from './db'
 import { formatMinutes, POMODORO_MINUTES } from './format'
 import { periodLabel, periodOf, startOfDay, type Unit } from './periods'
 import { pluralRu } from './plural'
+import { splitFlow, type Cell } from './flows'
 import { ProjectCard } from './ProjectCard'
 import { ProjectEditor } from './ProjectEditor'
 import { useProjectTabs } from './projectTabs'
@@ -61,8 +62,15 @@ export default function App() {
 
   // Время — по длине потоков; у проекта — его помидоры в них, клетка на каждый
   const total = flows.reduce((sum, f) => sum + f.length, 0)
-  const byProject = new Map<string, Flow[]>()
-  for (const f of flows) for (const [id, count] of Object.entries(f.counts)) byProject.set(id, [...(byProject.get(id) ?? []), ...Array<Flow>(count).fill(f)])
+  const byProject = new Map<string, Cell[]>()
+  for (const f of flows) {
+    for (const [id, part] of splitFlow(f)) {
+      const cells = [...Array<Cell>(part.solid).fill({ flow: f, parallel: false }), ...Array<Cell>(part.parallel).fill({ flow: f, parallel: true })]
+      byProject.set(id, [...(byProject.get(id) ?? []), ...cells])
+    }
+  }
+  // Помидоры сверх длины потоков: проекты шли параллельно, во времени их нет
+  const parallel = flows.reduce((sum, f) => sum + Object.values(f.counts).reduce((a, b) => a + b, 0) - f.length, 0)
   // Проекты в архиве хранят категорию, поэтому отбираются так же, как активные
   const rows = projects
     .filter((project) => chosen.length === 0 || chosen.includes(project.categoryId))
@@ -124,6 +132,7 @@ export default function App() {
           <span className="block text-3xl font-semibold tabular-nums">{total}</span>
           <span className="text-sm text-stone-500">
             {pluralRu(total, ['помидор', 'помидора', 'помидоров'])} {unitTotals[unit]} · {formatMinutes(total * POMODORO_MINUTES)}
+            {parallel > 0 && ` · ещё ${parallel} параллельно`}
           </span>
         </div>
 

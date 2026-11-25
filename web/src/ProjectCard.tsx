@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Flow, Project } from './db'
+import type { Cell } from './flows'
 import { ProjectChip } from './ProjectChip'
 
 // Сколько клеток видно без разворота, если их слишком много
@@ -21,8 +22,8 @@ export function ProjectCard({
   onRemove,
 }: {
   project: Project
-  // По потоку на каждый помидор проекта, по времени
-  cells: Flow[]
+  // По клетке на каждый помидор проекта, по времени потоков
+  cells: Cell[]
   // Длина всех потоков за период: время, параллельные проекты в нём один раз
   total: number
   onEdit: () => void
@@ -49,13 +50,13 @@ export function ProjectCard({
         <div className="h-full rounded-full bg-tomato" style={{ width: `${(count / total) * 100}%` }} />
       </div>
       <div className="mt-3 grid grid-cols-10 gap-1">
-        {shown.map((flow, i) => (
+        {shown.map((cell, i) => (
           <button
-            key={`${flow.id}-${i}`}
+            key={`${cell.flow.id}-${i}`}
             type="button"
-            aria-label="Снять помидор"
-            onClick={() => onRemove(flow)}
-            className="aspect-square rounded-md bg-tomato"
+            aria-label={cell.parallel ? 'Снять параллельный помидор' : 'Снять помидор'}
+            onClick={() => onRemove(cell.flow)}
+            className={`aspect-square rounded-md ${cell.parallel ? 'bg-tomato-hatch' : 'bg-tomato'}`}
           />
         ))}
         <button
