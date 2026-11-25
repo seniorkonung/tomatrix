@@ -4,10 +4,6 @@ import { formatMinutes, POMODORO_MINUTES } from './format'
 import { pluralRu } from './plural'
 import { ProjectChip } from './ProjectChip'
 
-// Столбцов в ряду клеток: при длинном потоке клетки переносятся, но помидор с одним номером у всех проектов
-// стоит в одном столбце — пересечения видны по вертикали
-const COLUMNS = 10
-
 // Второй шаг добавления: какие помидоры потока занимал каждый проект. Клетка заполняется и очищается касанием;
 // помидор, отмеченный у нескольких проектов, — параллельный, у всех них с точкой
 export function FlowSheet({
@@ -34,7 +30,6 @@ export function FlowSheet({
     const list = slots[id] ?? []
     onSlots({ ...slots, [id]: list.includes(slot) ? list.filter((i) => i !== slot) : [...list, slot].sort((a, b) => a - b) })
   }
-  const grid = { gridTemplateColumns: `repeat(${Math.min(length, COLUMNS)}, minmax(0, 1fr))` }
 
   return (
     <div className="fixed inset-0 z-20 mx-auto flex max-w-xl flex-col justify-end bg-black/30" onClick={onBack}>
@@ -51,7 +46,9 @@ export function FlowSheet({
 
         <div className="overflow-y-auto px-4">
           {/* Покрытие потока: пустая клетка — помидор ещё ни у кого не отмечен, с точкой — параллельный */}
-          <div className="grid gap-1" style={grid}>
+          {/* Клетки того же размера, что на главном экране, по 10 в ряд с переносом: помидор с одним номером
+              у всех проектов стоит в одном столбце — пересечения видны по вертикали */}
+          <div className="grid grid-cols-10 gap-1">
             {cover.map((c, i) => (
               <span
                 key={i}
@@ -77,7 +74,7 @@ export function FlowSheet({
                     <ProjectChip project={project} />
                     <span className="text-sm text-stone-500 tabular-nums">{list.length}</span>
                   </div>
-                  <div className="grid gap-1" style={grid}>
+                  <div className="grid grid-cols-10 gap-1">
                     {cover.map((c, i) => {
                       const on = list.includes(i)
                       return (
