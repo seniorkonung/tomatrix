@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { db, type Activity, type Period } from './db'
 import { pluralRu } from './plural'
+import { emptyCell } from './pomodoros'
 import { Sheet } from './Sheet'
 
 // Создание занятия, если activity не передано, иначе правка
@@ -32,13 +33,8 @@ export function ActivitySheet({ activity, onClose }: { activity?: Activity; onCl
   async function remove() {
     if (!activity || !confirm(`Удалить занятие «${activity.name}» вместе с его помидорами?`)) return
     await db.transaction('rw', db.activities, db.pomodoros, async () => {
-      const pomodoros = await db.pomodoros.where('activityIds').equals(activity.id).toArray()
-      await db.pomodoros.bulkDelete(pomodoros.filter((p) => p.activityIds.length === 1).map((p) => p.id))
-      await db.pomodoros.bulkPut(
-        pomodoros
-          .filter((p) => p.activityIds.length > 1)
-          .map((p) => ({ ...p, activityIds: p.activityIds.filter((id) => id !== activity.id) })),
-      )
+      const pomodoros = await db.pomodoros.filter((p) => activity.id in p.cells).toArray()
+      for (const p of pomodoros) await emptyCell(p, activity.id)
       await db.activities.delete(activity.id)
     })
     onClose()

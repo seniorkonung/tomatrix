@@ -5,7 +5,6 @@ import { ActivitySheet } from './ActivitySheet'
 import { db, type Activity } from './db'
 import { periodStart, startOfDay, startOfWeek } from './periods'
 import { pluralRu } from './plural'
-import { PomodoroSheet } from './PomodoroSheet'
 
 const POMODORO_MINUTES = 20
 
@@ -37,8 +36,10 @@ export default function App() {
   const pomodoros = useLiveQuery(() => db.pomodoros.where('createdAt').aboveOrEqual(weekStart).sortBy('createdAt'), [weekStart])
 
   const [editing, setEditing] = useState<Activity | 'new' | null>(null)
-  const [openPomodoroId, setOpenPomodoroId] = useState<string | null>(null)
-  const openPomodoro = pomodoros?.find((p) => p.id === openPomodoroId)
+  // Долгое нажатие на ячейку: какие ячейки других занятий — тот же помидор
+  const [linkingIds, setLinkingIds] = useState<{ pomodoroId: string; activityId: string } | null>(null)
+  const linkingPomodoro = pomodoros?.find((p) => p.id === linkingIds?.pomodoroId)
+  const linking = linkingIds && linkingPomodoro ? { pomodoro: linkingPomodoro, activityId: linkingIds.activityId } : null
 
   if (!activities || !pomodoros) return null
 
@@ -66,19 +67,27 @@ export default function App() {
           <ActivityCard
             key={a.id}
             activity={a}
-            pomodoros={pomodoros.filter((p) => p.createdAt >= since && p.activityIds.includes(a.id))}
+            pomodoros={pomodoros.filter((p) => p.createdAt >= since && a.id in p.cells)}
+            linking={linking}
             onEdit={() => setEditing(a)}
-            onOpenPomodoro={setOpenPomodoroId}
+            onStartLinking={(p) => setLinkingIds({ pomodoroId: p.id, activityId: a.id })}
           />
         )
       })}
 
-      <button onClick={() => setEditing('new')} className="rounded-2xl border-2 border-dashed border-stone-200 py-3 text-stone-500">
+      <button onClick={() => setEditing('new')} disabled={!!linking} className="rounded-2xl border-2 border-dashed border-stone-200 py-3 text-stone-500">
         Добавить занятие
       </button>
 
       {editing && <ActivitySheet activity={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
-      {openPomodoro && <PomodoroSheet pomodoro={openPomodoro} activities={activities} onClose={() => setOpenPomodoroId(null)} />}
+      {linking && (
+        <div className="sticky bottom-[max(1rem,env(safe-area-inset-bottom))] mt-auto flex items-center gap-3 rounded-2xl bg-stone-900 p-3 pl-4 text-sm text-white shadow-lg">
+          <span className="flex-1">Отметьте ячейки других занятий, на которые потрачен этот же помидор</span>
+          <button onClick={() => setLinkingIds(null)} className="rounded-xl bg-white px-4 py-2 font-medium text-stone-900">
+            Готово
+          </button>
+        </div>
+      )}
     </div>
   )
 }
