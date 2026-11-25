@@ -74,7 +74,7 @@ export function AddSheet({ day, onClose }: { day: Date; onClose: () => void }) {
             <button type="button" className="text-sm text-stone-500" onClick={onClose}>
               Отмена
             </button>
-            <h2 className="font-semibold">Помидоры на {dayFormat.format(day)}</h2>
+            <h2 className="font-semibold">{dayFormat.format(day)}</h2>
             <span className="w-12" />
           </div>
 
@@ -85,7 +85,7 @@ export function AddSheet({ day, onClose }: { day: Date; onClose: () => void }) {
             <div className="w-32 text-center">
               <div className="text-3xl font-semibold tabular-nums">{count}</div>
               <div className="text-xs text-stone-400">
-                {pluralRu(count, ['помидор', 'помидора', 'помидоров'])} · {formatMinutes(count * POMODORO_MINUTES)}
+                {formatMinutes(count * POMODORO_MINUTES)}
               </div>
             </div>
             <button type="button" aria-label="Больше" className={stepClass} onClick={() => setCount(count + 1)}>
