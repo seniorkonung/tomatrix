@@ -2,16 +2,6 @@
 
 @theme {
   --color-tomato: #e5483b;
-  --animate-pop: pop 220ms ease-out;
 }
 
-/* Заполненный квадратик слегка подпрыгивает */
-@keyframes pop {
-  0% { transform: scale(0.6); }
-  70% { transform: scale(1.08); }
-  100% { transform: scale(1); }
-}
-
-/* Потянуть страницу вниз — раскрыть календарь, а не обновить страницу.
-   Раскрытый календарь сдвигает ленту вниз, а не наезжает на неё */
-html { background: var(--color-stone-50); overscroll-behavior-y: none; overflow-anchor: none; }
+html { background: var(--color-stone-50); }
