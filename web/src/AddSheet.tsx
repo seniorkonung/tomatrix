@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { addPomodoros, createProject, db, type Project } from './db'
 import { formatMinutes, POMODORO_MINUTES } from './format'
 import { pluralRu } from './plural'
@@ -10,12 +10,26 @@ import { ProjectTabsSheet } from './ProjectTabsSheet'
 
 const archivedFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
 const dayFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
+const dayWithYearFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 
-// Единственное место, где добавляются помидоры: сколько и каким проектам они посвящены
-export function AddSheet({ day, onClose }: { day: Date; onClose: () => void }) {
+const addDays = (day: Date, days: number) => new Date(day.getFullYear(), day.getMonth(), day.getDate() + days)
+const pad = (n: number) => String(n).padStart(2, '0')
+const isoDay = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+function dayLabel(day: Date, today: Date) {
+  const diff = Math.round((today.getTime() - day.getTime()) / 86_400_000)
+  const date = (day.getFullYear() === today.getFullYear() ? dayFormat : dayWithYearFormat).format(day).replace(' г.', '')
+  return diff === 0 ? `Сегодня, ${date}` : diff === 1 ? `Вчера, ${date}` : date
+}
+
+// Добавление помидоров: сколько, в какой день и каким проектам они посвящены.
+// По умолчанию — сегодня; можно выбрать прошлый день, но не будущий
+export function AddSheet({ today, onClose }: { today: Date; onClose: () => void }) {
   const projects = useLiveQuery(() => db.projects.toArray())
   const tabs = useProjectTabs()
   const [count, setCount] = useState(1)
+  const [day, setDay] = useState(today)
+  const dateInput = useRef<HTMLInputElement>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [tabId, setTabId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -63,6 +77,7 @@ export function AddSheet({ day, onClose }: { day: Date; onClose: () => void }) {
   }
 
   const tabClass = (active: boolean) => `shrink-0 rounded-full px-3 py-1.5 text-sm ${active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`
+  const arrowClass = 'flex size-9 items-center justify-center rounded-full text-stone-500 disabled:opacity-30'
   const stepClass = 'flex size-10 items-center justify-center rounded-full bg-stone-100 text-xl disabled:opacity-30'
 
   // Вложенные панели — не внутри подложки: нажатие на их подложку не должно закрывать и эту
@@ -70,12 +85,43 @@ export function AddSheet({ day, onClose }: { day: Date; onClose: () => void }) {
     <>
       <div className="fixed inset-0 z-10 mx-auto flex max-w-xl flex-col justify-end bg-black/30" onClick={onClose}>
         <div className="flex h-[90dvh] flex-col rounded-t-3xl bg-white pb-[max(1rem,env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
-          <div className="flex items-center justify-between px-5 pt-4 pb-1">
-            <button type="button" className="text-sm text-stone-500" onClick={onClose}>
+          <div className="flex items-center gap-1 px-3 pt-3">
+            <button type="button" className="w-16 text-left text-sm text-stone-500" onClick={onClose}>
               Отмена
             </button>
-            <h2 className="font-semibold">{dayFormat.format(day)}</h2>
-            <span className="w-12" />
+            <span className="flex-1" />
+            <button type="button" aria-label="Предыдущий день" className={arrowClass} onClick={() => setDay(addDays(day, -1))}>
+              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+            {/* Нажатие открывает выбор даты системы: так быстрее уйти далеко в прошлое */}
+            <button type="button" className="relative rounded-xl px-2 py-1.5 font-semibold whitespace-nowrap" onClick={() => dateInput.current?.showPicker()}>
+              {dayLabel(day, today)}
+              <input
+                ref={dateInput}
+                type="date"
+                tabIndex={-1}
+                aria-hidden
+                max={isoDay(today)}
+                value={isoDay(day)}
+                onChange={(e) => {
+                  const [y, m, d] = e.target.value.split('-').map(Number)
+                  if (!y) return
+                  const picked = new Date(y, m - 1, d)
+                  setDay(picked > today ? today : picked)
+                }}
+                className="pointer-events-none absolute inset-0 opacity-0"
+              />
+            </button>
+            <button type="button" aria-label="Следующий день" className={arrowClass} disabled={day >= today} onClick={() => setDay(addDays(day, 1))}>
+              <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+            <span className="flex-1" />
+            {/* Противовес «Отмене», чтобы дата стояла по центру */}
+            <span className="w-16" />
           </div>
 
           <div className="flex items-center justify-center gap-4 py-3">

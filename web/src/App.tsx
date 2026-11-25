@@ -73,7 +73,7 @@ export default function App() {
     .sort((a, b) => b.pomodoros.length - a.pomodoros.length || a.project.name.localeCompare(b.project.name, 'ru'))
   const projectsById = new Map(projects.map((p) => [p.id, p]))
 
-  // В режиме «День» помидоры ложатся в показанный день, иначе — в сегодня
+  // Клетка «+» в карточке кладёт помидор туда, где на него смотрят: в показанный день, а в других режимах — в сегодня
   const addDay = unit === 'day' ? start : startOfDay(now)
 
   function remove(pomodoro: Pomodoro) {
@@ -178,7 +178,7 @@ export default function App() {
         </button>
       </div>
 
-      {adding && <AddSheet day={addDay} onClose={() => setAdding(false)} />}
+      {adding && <AddSheet today={startOfDay(now)} onClose={() => setAdding(false)} />}
       {editingId && <ProjectEditor projectId={editingId} onClose={() => setEditingId(null)} />}
       {removing && (
         <RemoveSheet
