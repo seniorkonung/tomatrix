@@ -1,1 +1,15 @@
 @import "tailwindcss";
+
+@theme {
+  --color-tomato: #e5483b;
+  --animate-pop: pop 220ms ease-out;
+}
+
+/* Заполненный квадратик слегка подпрыгивает */
+@keyframes pop {
+  0% { transform: scale(0.6); }
+  70% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+html { background: var(--color-stone-50); }
