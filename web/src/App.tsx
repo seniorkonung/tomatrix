@@ -6,7 +6,7 @@ import { addFlow, db, removeFromFlow, type Flow } from './db'
 import { formatMinutes, POMODORO_MINUTES } from './format'
 import { periodLabel, periodOf, startOfDay, type Unit } from './periods'
 import { pluralRu } from './plural'
-import { allSlots, cellsOf, type Cell } from './flows'
+import { allSlots, cellsOf, coverage, type Cell } from './flows'
 import { ProjectCard } from './ProjectCard'
 import { ProjectEditor } from './ProjectEditor'
 import { useProjectTabs } from './projectTabs'
@@ -60,13 +60,20 @@ export default function App() {
   const toggleCategory = (id: string | null) =>
     db.settings.put({ id: 'statsCategories', value: chosen.includes(id) ? chosen.filter((x) => x !== id) : [...chosen, id] })
 
-  // Время — по длине потоков; у проекта — его помидоры в них, клетка на каждый
-  const total = flows.reduce((sum, f) => sum + f.length, 0)
+  // Проекты в архиве хранят категорию, поэтому отбираются так же, как активные
+  const shownIds = new Set(projects.filter((p) => chosen.length === 0 || chosen.includes(p.categoryId)).map((p) => p.id))
+  // Время — помидоры потоков, которые занимал хоть один показанный проект: параллельный в нём один раз.
+  // Без выбранных категорий это вся длина потоков
+  const total = flows.reduce(
+    (sum, f) => sum + coverage(Object.fromEntries(Object.entries(f.slots).filter(([id]) => shownIds.has(id))), f.length).filter((c) => c > 0).length,
+    0,
+  )
+  // Были ли помидоры за период вообще: от этого зависят вкладки категорий и пустой экран, а не от выбора категорий
+  const hasFlows = flows.length > 0
   const byProject = new Map<string, Cell<Flow>[]>()
   for (const f of flows) for (const id of Object.keys(f.slots)) byProject.set(id, [...(byProject.get(id) ?? []), ...cellsOf(f, id)])
-  // Проекты в архиве хранят категорию, поэтому отбираются так же, как активные
   const rows = projects
-    .filter((project) => chosen.length === 0 || chosen.includes(project.categoryId))
+    .filter((project) => shownIds.has(project.id))
     .flatMap((project) => {
       const own = byProject.get(project.id)
       return own ? [{ project, cells: own }] : []
@@ -128,7 +135,7 @@ export default function App() {
           </span>
         </div>
 
-        {total > 0 && categories.length > 0 && (
+        {hasFlows && categories.length > 0 && (
           <div className="mt-4 -mb-1 flex gap-1.5 overflow-x-auto">
             <button type="button" className={tabClass(chosen.length === 0)} onClick={() => db.settings.put({ id: 'statsCategories', value: [] })}>
               Все проекты
@@ -144,7 +151,7 @@ export default function App() {
           </div>
         )}
 
-        {total === 0 ? (
+        {!hasFlows ? (
           <p className="px-1 py-8 text-center text-stone-400">
             {projects.length === 0 ? 'Нажмите +, чтобы добавить первые помидоры и проекты, которым они посвящены' : 'Помидоров за этот период нет'}
           </p>
