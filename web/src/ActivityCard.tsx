@@ -15,6 +15,7 @@ export type Linking = {
 export function ActivityCard({
   activity,
   pomodoros,
+  day,
   linking,
   onEdit,
   onStartLinking,
@@ -23,6 +24,8 @@ export function ActivityCard({
   activity: Activity
   // Помидоры занятия за текущий период
   pomodoros: Pomodoro[]
+  // Выбранный день: в него ложатся новые помидоры
+  day: Date
   linking: Linking | null
   onEdit: () => void
   onStartLinking: (pomodoro: Pomodoro) => void
@@ -42,7 +45,7 @@ export function ActivityCard({
         <h2 className="truncate font-semibold">{activity.name}</h2>
         <span className={`shrink-0 text-sm tabular-nums ${status}`}>
           {count} / {activity.goalKind === 'min' ? '≥' : '≤'}
-          {activity.goal} {activity.period === 'day' ? 'сегодня' : 'за неделю'}
+          {activity.goal} {activity.period === 'day' ? 'за день' : 'за неделю'}
         </span>
       </button>
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -63,7 +66,7 @@ export function ActivityCard({
               onTap={() => {
                 if (linking) onToggleLink(pomodoro!)
                 else if (pomodoro) void emptyCell(pomodoro, activity.id)
-                else void fillCell(activity.id, index)
+                else void fillCell(activity.id, index, day)
               }}
               onLongPress={pomodoro && !linking ? () => onStartLinking(pomodoro) : undefined}
             />
@@ -97,6 +100,7 @@ function Cell({
   onLongPress?: () => void
 }) {
   const timer = useRef<number>(undefined)
+  const origin = useRef({ x: 0, y: 0 })
   // Долгое нажатие уже сработало — отпускание не считается касанием
   const fired = useRef(false)
 
@@ -107,14 +111,19 @@ function Cell({
     <button
       disabled={disabled}
       aria-label={pomodoro ? 'Помидор' : 'Пустая ячейка'}
-      onPointerDown={() => {
+      onPointerDown={(e) => {
         fired.current = false
+        origin.current = { x: e.clientX, y: e.clientY }
         if (!onLongPress) return
         timer.current = window.setTimeout(() => {
           fired.current = true
           navigator.vibrate?.(15)
           onLongPress()
         }, LONG_PRESS_MS)
+      }}
+      // Палец сдвинулся — это свайп или прокрутка, а не долгое нажатие
+      onPointerMove={(e) => {
+        if (Math.hypot(e.clientX - origin.current.x, e.clientY - origin.current.y) > 10) cancel()
       }}
       onPointerUp={cancel}
       onPointerLeave={cancel}

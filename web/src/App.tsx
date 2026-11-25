@@ -1,15 +1,18 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ActivityCard, type Linking } from './ActivityCard'
 import { ActivitySheet } from './ActivitySheet'
+import { Calendar, CALENDAR_RANGE } from './Calendar'
 import { db, type Activity } from './db'
-import { periodStart, startOfDay, startOfWeek } from './periods'
+import { addDays, periodStart, startOfDay, startOfMonth, startOfWeek } from './periods'
 import { pluralRu } from './plural'
 import { linkCells } from './pomodoros'
+import { useGestures } from './useGestures'
 
 const POMODORO_MINUTES = 20
 
-const today = new Intl.DateTimeFormat('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })
+const weekday = new Intl.DateTimeFormat('ru-RU', { weekday: 'long' })
+const longDate = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })
 
 // Текущее время раз в минуту: в полночь и в понедельник периоды сменяются без перезагрузки
 function useNow() {
@@ -29,64 +32,127 @@ function formatMinutes(minutes: number) {
 
 export default function App() {
   const now = useNow()
-  const dayStart = startOfDay(now).getTime()
-  const weekStart = startOfWeek(now).getTime()
+  const today = startOfDay(now)
+  // null — сегодня: после полуночи выбранной становится новая дата
+  const [picked, setPicked] = useState<Date | null>(null)
+  const selected = picked ?? today
+  const isToday = selected.getTime() === today.getTime()
+  const select = (day: Date) => setPicked(day.getTime() === today.getTime() ? null : day)
 
+  // Календарь: раскрыт ли, насколько вытянут пальцем, какой месяц показан (null — месяц выбранной даты)
+  const [expanded, setExpanded] = useState(false)
+  const [pull, setPull] = useState<number | null>(null)
+  const [month, setMonth] = useState<Date | null>(null)
+  const [years, setYears] = useState(false)
+  // Свёрнутый календарь в следующий раз раскрывается месяцем выбранной даты
+  const toggleCalendar = (open: boolean) => {
+    setExpanded(open)
+    if (open) return
+    setMonth(null)
+    setYears(false)
+  }
+
+  const root = useRef<HTMLDivElement>(null)
+  useGestures(root, CALENDAR_RANGE, {
+    expanded,
+    onPull: setPull,
+    onToggle: toggleCalendar,
+    onSwipe: (direction, inCalendar) => {
+      if (inCalendar && expanded) {
+        const m = month ?? startOfMonth(selected)
+        setMonth(new Date(m.getFullYear(), m.getMonth() + direction, 1))
+      } else select(addDays(selected, inCalendar ? 7 * direction : direction))
+    },
+  })
+
+  const weekStart = startOfWeek(selected).getTime()
+  const weekEnd = addDays(startOfWeek(selected), 7).getTime()
   const activities = useLiveQuery(() => db.activities.orderBy('order').toArray())
-  // Неделя начинается не позже дня, поэтому её помидоров хватает обоим периодам
-  const pomodoros = useLiveQuery(() => db.pomodoros.where('createdAt').aboveOrEqual(weekStart).sortBy('createdAt'), [weekStart])
+  // Неделя выбранной даты содержит и её день, поэтому её помидоров хватает обоим периодам
+  const pomodoros = useLiveQuery(() => db.pomodoros.where('createdAt').between(weekStart, weekEnd).sortBy('createdAt'), [weekStart, weekEnd])
 
   const [editing, setEditing] = useState<Activity | 'new' | null>(null)
   // Долгое нажатие на ячейку: какие ячейки других занятий — тот же помидор
   const [linking, setLinking] = useState<Linking | null>(null)
 
-  if (!activities || !pomodoros) return null
-
-  const todayCount = pomodoros.filter((p) => p.createdAt >= dayStart).length
+  const dayStart = selected.getTime()
+  const dayEnd = addDays(selected, 1).getTime()
+  const dayCount = pomodoros?.filter((p) => p.createdAt >= dayStart && p.createdAt < dayEnd).length ?? 0
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-xl flex-col gap-3 px-3 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div
+      ref={root}
+      className="mx-auto flex min-h-dvh max-w-xl touch-pan-y flex-col gap-3 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+    >
+      <Calendar
+        selected={selected}
+        today={today}
+        month={month ?? startOfMonth(selected)}
+        progress={pull ?? (expanded ? 1 : 0)}
+        dragging={pull !== null}
+        years={years}
+        onSelect={select}
+        onMonth={setMonth}
+        onYears={setYears}
+        onToggle={() => toggleCalendar(!expanded)}
+      />
+
       <header className="px-1">
-        <div className="text-sm text-stone-500 first-letter:uppercase">{today.format(now)}</div>
-        <div className="text-xl font-semibold">
-          {todayCount} {pluralRu(todayCount, ['помидор', 'помидора', 'помидоров'])}
-          <span className="ml-2 text-base font-normal text-stone-400">{formatMinutes(todayCount * POMODORO_MINUTES)}</span>
+        <div className="flex items-center gap-2 text-stone-500">
+          <span className="first-letter:uppercase">{weekday.format(selected)}</span>
+          {isToday ? (
+            <span className="rounded-md bg-tomato/10 px-1.5 py-0.5 text-sm text-tomato">Сегодня</span>
+          ) : (
+            <button onClick={() => select(today)} className="rounded-md bg-stone-200/70 px-1.5 py-0.5 text-sm text-stone-600">
+              К сегодня
+            </button>
+          )}
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight">{longDate.format(selected).replace(' г.', '')}</h1>
+        <div className="mt-1 text-stone-500">
+          {dayCount} {pluralRu(dayCount, ['помидор', 'помидора', 'помидоров'])} · {formatMinutes(dayCount * POMODORO_MINUTES)}
         </div>
       </header>
 
-      {activities.length === 0 && (
-        <p className="px-1 py-6 text-stone-500">
-          Добавьте важные занятия и сколько помидоров хотите на них тратить. Один помидор — {POMODORO_MINUTES} минут внимания.
-        </p>
+      {activities && pomodoros && (
+        <>
+          {activities.length === 0 && (
+            <p className="px-1 py-6 text-stone-500">
+              Добавьте важные занятия и сколько помидоров хотите на них тратить. Один помидор — {POMODORO_MINUTES} минут внимания.
+            </p>
+          )}
+
+          {activities.map((a) => {
+            const since = periodStart(a.period, selected)
+            const until = a.period === 'day' ? dayEnd : weekEnd
+            return (
+              <ActivityCard
+                key={a.id}
+                activity={a}
+                pomodoros={pomodoros.filter((p) => p.createdAt >= since && p.createdAt < until && a.id in p.cells)}
+                day={selected}
+                linking={linking}
+                onEdit={() => setEditing(a)}
+                onStartLinking={(p) =>
+                  setLinking({ pomodoroId: p.id, activityId: a.id, selected: Object.fromEntries(Object.keys(p.cells).map((id) => [id, p.id])) })
+                }
+                onToggleLink={(p) =>
+                  setLinking((l) => {
+                    if (!l) return l
+                    // В занятии выбирается одна ячейка: повторное нажатие снимает выбор, другая ячейка его переносит
+                    const { [a.id]: current, ...rest } = l.selected
+                    return { ...l, selected: current === p.id ? rest : { ...rest, [a.id]: p.id } }
+                  })
+                }
+              />
+            )
+          })}
+
+          <button onClick={() => setEditing('new')} disabled={!!linking} className="rounded-2xl border-2 border-dashed border-stone-200 py-3 text-stone-500">
+            Добавить занятие
+          </button>
+        </>
       )}
-
-      {activities.map((a) => {
-        const since = periodStart(a.period, now)
-        return (
-          <ActivityCard
-            key={a.id}
-            activity={a}
-            pomodoros={pomodoros.filter((p) => p.createdAt >= since && a.id in p.cells)}
-            linking={linking}
-            onEdit={() => setEditing(a)}
-            onStartLinking={(p) =>
-              setLinking({ pomodoroId: p.id, activityId: a.id, selected: Object.fromEntries(Object.keys(p.cells).map((id) => [id, p.id])) })
-            }
-            onToggleLink={(p) =>
-              setLinking((l) => {
-                if (!l) return l
-                // В занятии выбирается одна ячейка: повторное нажатие снимает выбор, другая ячейка его переносит
-                const { [a.id]: current, ...rest } = l.selected
-                return { ...l, selected: current === p.id ? rest : { ...rest, [a.id]: p.id } }
-              })
-            }
-          />
-        )
-      })}
-
-      <button onClick={() => setEditing('new')} disabled={!!linking} className="rounded-2xl border-2 border-dashed border-stone-200 py-3 text-stone-500">
-        Добавить занятие
-      </button>
 
       {editing && <ActivitySheet activity={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
       {linking && (
@@ -97,7 +163,7 @@ export default function App() {
           </button>
           <button
             onClick={() => {
-              void linkCells(linking.pomodoroId, linking.selected)
+              void linkCells(linking.pomodoroId, linking.selected, Object.fromEntries(activities!.map((a) => [a.id, a.period])))
               setLinking(null)
             }}
             className="rounded-xl bg-white px-4 py-2 font-medium text-stone-900"

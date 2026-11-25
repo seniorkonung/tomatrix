@@ -12,4 +12,5 @@
   100% { transform: scale(1); }
 }
 
-html { background: var(--color-stone-50); }
+/* Потянуть страницу вниз — раскрыть календарь, а не обновить страницу */
+html { background: var(--color-stone-50); overscroll-behavior-y: none; }
