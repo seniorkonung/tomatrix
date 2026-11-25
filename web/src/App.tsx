@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import { AddSheet } from './AddSheet'
-import { db, type Pomodoro } from './db'
+import { addPomodoros, db, type Pomodoro } from './db'
 import { formatMinutes, POMODORO_MINUTES } from './format'
 import { periodLabel, periodOf, startOfDay, type Unit } from './periods'
 import { pluralRu } from './plural'
@@ -31,7 +31,13 @@ export default function App() {
   // Сдвиг от текущего периода; будущие периоды не показываются
   const [offset, setOffset] = useState(0)
   const { start, end } = periodOf(unit, offset, now)
-  const shift = (delta: number) => setOffset((o) => Math.min(0, o + delta))
+  // Проекты, у которых в этом периоде снимали помидоры: их карточка остаётся и без помидоров,
+  // чтобы случайно снятый помидор можно было вернуть там же. Смена периода их забывает
+  const [kept, setKept] = useState<string[]>([])
+  const shift = (delta: number) => {
+    setOffset((o) => Math.min(0, o + delta))
+    setKept([])
+  }
 
   const root = useRef<HTMLDivElement>(null)
   useSwipe(root, shift)
@@ -67,13 +73,17 @@ export default function App() {
   const rows = projects
     .filter((project) => chosen.length === 0 || chosen.includes(project.categoryId))
     .flatMap((project) => {
-      const own = byProject.get(project.id)
-      return own ? [{ project, pomodoros: own }] : []
+      const own = byProject.get(project.id) ?? []
+      return own.length > 0 || kept.includes(project.id) ? [{ project, pomodoros: own }] : []
     })
     .sort((a, b) => b.pomodoros.length - a.pomodoros.length || a.project.name.localeCompare(b.project.name, 'ru'))
   const projectsById = new Map(projects.map((p) => [p.id, p]))
 
+  // В режиме «День» помидоры ложатся в показанный день, иначе — в сегодня
+  const addDay = unit === 'day' ? start : startOfDay(now)
+
   function remove(pomodoro: Pomodoro) {
+    setKept((ids) => [...new Set([...ids, ...pomodoro.projectIds])])
     if (pomodoro.projectIds.length > 1) setRemoving(pomodoro)
     else void db.pomodoros.delete(pomodoro.id)
   }
@@ -95,6 +105,7 @@ export default function App() {
             onClick={() => {
               setUnit(u)
               setOffset(0)
+              setKept([])
             }}
           >
             {unitLabels[u]}
@@ -109,7 +120,7 @@ export default function App() {
           </svg>
         </button>
         {/* Нажатие возвращает к текущему периоду */}
-        <button type="button" className="flex-1 text-center font-medium" onClick={() => setOffset(0)}>
+        <button type="button" className="flex-1 text-center font-medium" onClick={() => shift(-offset)}>
           {periodLabel(unit, start, end, now)}
           {offset === 0 && unit === 'day' && <span className="ml-2 rounded-md bg-tomato/10 px-1.5 py-0.5 text-sm text-tomato">Сегодня</span>}
         </button>
@@ -127,7 +138,7 @@ export default function App() {
         </span>
       </div>
 
-      {total > 0 && categories.length > 0 && (
+      {(total > 0 || rows.length > 0) && categories.length > 0 && (
         <div className="mt-4 -mb-1 flex gap-1.5 overflow-x-auto">
           <button type="button" className={tabClass(chosen.length === 0)} onClick={() => db.settings.put({ id: 'statsCategories', value: [] })}>
             Все проекты
@@ -143,7 +154,7 @@ export default function App() {
         </div>
       )}
 
-      {total === 0 ? (
+      {rows.length === 0 && chosen.length === 0 ? (
         <p className="px-1 py-8 text-center text-stone-400">
           {projects.length === 0 ? 'Нажмите +, чтобы добавить первые помидоры и проекты, которым они посвящены' : 'Помидоров за этот период нет'}
         </p>
@@ -156,6 +167,7 @@ export default function App() {
               pomodoros={pomodoros}
               total={total}
               onEdit={() => setEditingId(project.id)}
+              onAdd={() => void addPomodoros(1, [project], addDay)}
               onRemove={remove}
             />
           ))}
@@ -174,8 +186,7 @@ export default function App() {
         </button>
       </div>
 
-      {/* В режиме «День» помидоры ложатся в показанный день, иначе — в сегодня */}
-      {adding && <AddSheet day={unit === 'day' ? start : startOfDay(now)} onClose={() => setAdding(false)} />}
+      {adding && <AddSheet day={addDay} onClose={() => setAdding(false)} />}
       {editingId && <ProjectEditor projectId={editingId} onClose={() => setEditingId(null)} />}
       {removing && (
         <RemoveSheet
