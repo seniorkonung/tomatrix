@@ -1,11 +1,11 @@
 import { projectColors, type Project } from './db'
 import { coverage, type Slots } from './flows'
-import { formatMinutes, POMODORO_MINUTES } from './format'
+import { formatMinutes, hatch, POMODORO_MINUTES, TOMATO } from './format'
 import { pluralRu } from './plural'
 import { ProjectChip } from './ProjectChip'
 
 // Второй шаг добавления: какие помидоры потока занимал каждый проект. Клетка заполняется и очищается касанием;
-// помидор, отмеченный у нескольких проектов, — параллельный, у всех них с точкой
+// помидор, отмеченный у нескольких проектов, — параллельный, у всех них заштрихован
 export function FlowSheet({
   length,
   projects,
@@ -45,17 +45,16 @@ export function FlowSheet({
         </div>
 
         <div className="overflow-y-auto px-4">
-          {/* Покрытие потока: пустая клетка — помидор ещё ни у кого не отмечен, с точкой — параллельный */}
+          {/* Покрытие потока: пустая клетка — помидор ещё ни у кого не отмечен, штрихованная — параллельный */}
           {/* Клетки того же размера, что на главном экране, по 10 в ряд с переносом: помидор с одним номером
               у всех проектов стоит в одном столбце — пересечения видны по вертикали */}
           <div className="grid grid-cols-10 gap-1">
             {cover.map((c, i) => (
               <span
                 key={i}
-                className={`flex aspect-square items-center justify-center rounded-md ${c === 0 ? 'border-2 border-dashed border-amber-400' : 'bg-tomato'}`}
-              >
-                {c > 1 && <span className="size-1.5 rounded-full bg-white/80" />}
-              </span>
+                className={`aspect-square rounded-md ${c === 0 ? 'border-2 border-dashed border-amber-400' : 'bg-tomato'}`}
+                style={c > 1 ? { background: hatch(TOMATO) } : undefined}
+              />
             ))}
           </div>
           <p className={`mt-1.5 text-sm ${uncovered ? 'text-amber-700' : 'text-stone-500'}`}>
@@ -84,11 +83,9 @@ export function FlowSheet({
                           aria-label={`${project.name}: помидор ${i + 1}`}
                           aria-pressed={on}
                           onClick={() => toggle(project.id, i)}
-                          className={`flex aspect-square items-center justify-center rounded-md ${on ? '' : 'bg-stone-100'}`}
-                          style={on ? { background: color } : undefined}
-                        >
-                          {on && c > 1 && <span className="size-1.5 rounded-full bg-white/80" />}
-                        </button>
+                          className={`aspect-square rounded-md ${on ? '' : 'bg-stone-100'}`}
+                          style={on ? { background: c > 1 ? hatch(color) : color } : undefined}
+                        />
                       )
                     })}
                   </div>

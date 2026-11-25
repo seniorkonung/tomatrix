@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Flow, Project } from './db'
 import type { Cell } from './flows'
+import { hatch, TOMATO } from './format'
 import { ProjectChip } from './ProjectChip'
 
 // Сколько клеток видно без разворота, если их слишком много
@@ -56,11 +57,10 @@ export function ProjectCard({
             type="button"
             aria-label={cell.parallel ? 'Снять параллельный помидор' : 'Снять помидор'}
             onClick={() => onRemove(cell)}
-            className="flex aspect-square items-center justify-center rounded-md bg-tomato"
-          >
-            {/* В этом помидоре шли и другие проекты; у них он отмечен так же */}
-            {cell.parallel && <span className="size-1.5 rounded-full bg-white/80" />}
-          </button>
+            className="aspect-square rounded-md bg-tomato"
+            // В этом помидоре шли и другие проекты; у них он заштрихован так же
+            style={cell.parallel ? { background: hatch(TOMATO) } : undefined}
+          />
         ))}
         <button
           type="button"
