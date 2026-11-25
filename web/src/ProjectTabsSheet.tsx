@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { saveProjectTabs, tabKey, type ProjectTab } from './projectTabs'
 
 const fixedNames = { all: 'Все', archived: 'Архив' }
@@ -9,7 +9,7 @@ export function ProjectTabsSheet({ tabs, onClose }: { tabs: ProjectTab[]; onClos
   const [deletedIds, setDeletedIds] = useState<string[]>([])
   // Новая категория получает фокус, чтобы сразу ввести название
   const [newId, setNewId] = useState<string | null>(null)
-  const canSave = draft.every((t) => t.kind !== 'category' || t.category.name.trim())
+  const newInput = useRef<HTMLInputElement>(null)
 
   function move(index: number, delta: number) {
     const next = [...draft]
@@ -28,13 +28,26 @@ export function ProjectTabsSheet({ tabs, onClose }: { tabs: ProjectTab[]; onClos
   }
 
   function add() {
+    // Пустая новая категория уже есть — вторая не нужна, ввод названия продолжается в ней
+    const empty = draft.find((t) => t.kind === 'category' && !t.category.name.trim() && !tabs.some((o) => tabKey(o) === t.category.id))
+    if (empty) {
+      setNewId(tabKey(empty))
+      newInput.current?.focus()
+      return
+    }
     const category = { id: crypto.randomUUID(), name: '', createdAt: Date.now() }
     setDraft([...draft, { kind: 'category', category }])
     setNewId(category.id)
   }
 
+  // Новые категории без названия не сохраняются, у существующих пустое название не заменяет прежнее
   async function save() {
-    await saveProjectTabs(draft, deletedIds)
+    const named = draft.flatMap((t): ProjectTab[] => {
+      if (t.kind !== 'category' || t.category.name.trim()) return [t]
+      const saved = tabs.find((o) => tabKey(o) === t.category.id)
+      return saved ? [saved] : []
+    })
+    await saveProjectTabs(named, deletedIds)
     onClose()
   }
 
@@ -51,7 +64,7 @@ export function ProjectTabsSheet({ tabs, onClose }: { tabs: ProjectTab[]; onClos
             Отмена
           </button>
           <h2 className="font-semibold">Вкладки</h2>
-          <button type="button" className="text-sm font-medium text-tomato disabled:text-stone-300" disabled={!canSave} onClick={() => void save()}>
+          <button type="button" className="text-sm font-medium text-tomato" onClick={() => void save()}>
             Сохранить
           </button>
         </div>
@@ -63,6 +76,7 @@ export function ProjectTabsSheet({ tabs, onClose }: { tabs: ProjectTab[]; onClos
                 <input
                   value={tab.category.name}
                   placeholder="Название категории"
+                  ref={tab.category.id === newId ? newInput : undefined}
                   autoFocus={tab.category.id === newId}
                   onChange={(e) => rename(tab.category.id, e.target.value)}
                   className="min-w-0 flex-1 bg-transparent py-1.5 outline-none"
