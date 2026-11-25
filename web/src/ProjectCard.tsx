@@ -23,7 +23,7 @@ export function ProjectCard({
 }: {
   project: Project
   // По клетке на каждый помидор проекта, по времени потоков
-  cells: Cell[]
+  cells: Cell<Flow>[]
   // Длина всех потоков за период: время, параллельные проекты в нём один раз
   total: number
   onEdit: () => void

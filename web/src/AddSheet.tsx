@@ -1,12 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useRef, useState } from 'react'
-import { addFlow, createProject, db, type Project } from './db'
+import { addFlow, createProject, db, projectColors, type Project } from './db'
+import { coverage, spanLength, type Span, type Spans } from './flows'
 import { formatMinutes, POMODORO_MINUTES } from './format'
 import { pluralRu } from './plural'
 import { ProjectChip } from './ProjectChip'
 import { ProjectEditor } from './ProjectEditor'
 import { tabKey, useProjectTabs } from './projectTabs'
 import { ProjectTabsSheet } from './ProjectTabsSheet'
+import { RangeTrack } from './RangeTrack'
 
 const archivedFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
 const dayFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' })
@@ -22,7 +24,7 @@ function dayLabel(day: Date, today: Date) {
   return diff === 0 ? `Сегодня, ${date}` : diff === 1 ? `Вчера, ${date}` : date
 }
 
-// Добавление потока: сколько он длился, в какой день и сколько его помидоров занимал каждый проект.
+// Добавление потока: сколько он длился, в какой день и какой отрезок его шкалы занимал каждый проект.
 // По умолчанию — сегодня; можно выбрать прошлый день, но не будущий
 export function AddSheet({ today, onClose }: { today: Date; onClose: () => void }) {
   const projects = useLiveQuery(() => db.projects.toArray())
@@ -30,8 +32,8 @@ export function AddSheet({ today, onClose }: { today: Date; onClose: () => void 
   const [length, setLength] = useState(1)
   const [day, setDay] = useState(today)
   const dateInput = useRef<HTMLInputElement>(null)
-  // Проекты потока в порядке выбора и их помидоры
-  const [parts, setParts] = useState<{ id: string; count: number }[]>([])
+  // Проекты потока в порядке выбора и их отрезки на шкале потока
+  const [parts, setParts] = useState<{ id: string; span: Span }[]>([])
   const [tabId, setTabId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [editingTabs, setEditingTabs] = useState(false)
@@ -63,23 +65,34 @@ export function AddSheet({ today, onClose }: { today: Date; onClose: () => void 
   const canCreate = q !== '' && !projects.some((p) => p.name.toLowerCase() === q)
   const selected = parts.flatMap((part) => {
     const project = projects.find((p) => p.id === part.id)
-    return project ? [{ project, count: part.count }] : []
+    return project ? [{ project, span: part.span }] : []
   })
-  const sum = selected.reduce((total, part) => total + part.count, 0)
+  const spans: Spans = Object.fromEntries(selected.map((part) => [part.project.id, part.span]))
+  const cover = coverage(spans, length)
+  const uncovered = cover.filter((c) => c === 0).length
+  const parallel = cover.reduce((sum, c) => sum + Math.max(0, c - 1), 0)
 
-  // Первый проект сразу занимает весь поток, следующий — то, что осталось нераспределённым
+  // Новый проект занимает первый непокрытый промежуток потока, а если всё покрыто — последний помидор
   const toggle = (project: Project) =>
     setParts((list) => {
       if (list.some((part) => part.id === project.id)) return list.filter((part) => part.id !== project.id)
-      const used = list.reduce((total, part) => total + part.count, 0)
-      return [...list, { id: project.id, count: Math.min(length, Math.max(1, length - used)) }]
+      const covered = coverage(Object.fromEntries(list.map((part) => [part.id, part.span])), length)
+      const gap = covered.indexOf(0)
+      let gapEnd = gap
+      while (gap !== -1 && gapEnd < length && covered[gapEnd] === 0) gapEnd++
+      const span: Span = gap === -1 ? [length - 1, length] : [gap, gapEnd]
+      return [...list, { id: project.id, span }]
     })
-  const setCount = (id: string, count: number) =>
-    setParts((list) => list.map((part) => (part.id === id ? { ...part, count: Math.min(length, Math.max(1, count)) } : part)))
-  // Проект не может занимать больше помидоров, чем длится поток
+  const setSpan = (id: string, span: Span) => setParts((list) => list.map((part) => (part.id === id ? { ...part, span } : part)))
+  // Отрезки, доходившие до конца потока, идут за ним при удлинении; при укорачивании обрезаются
   const changeLength = (next: number) => {
+    setParts((list) =>
+      list.map(({ id, span: [start, end] }) => {
+        const e = end === length ? next : Math.min(end, next)
+        return { id, span: [Math.min(start, e - 1), e] as Span }
+      }),
+    )
     setLength(next)
-    setParts((list) => list.map((part) => ({ ...part, count: Math.min(part.count, next) })))
   }
 
   async function create() {
@@ -89,14 +102,13 @@ export function AddSheet({ today, onClose }: { today: Date; onClose: () => void 
   }
 
   async function add() {
-    await addFlow(length, Object.fromEntries(selected.map((part) => [part.project.id, part.count])), selected.map((part) => part.project), day)
+    await addFlow(length, spans, selected.map((part) => part.project), day)
     onClose()
   }
 
   const tabClass = (active: boolean) => `shrink-0 rounded-full px-3 py-1.5 text-sm ${active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`
   const arrowClass = 'flex size-9 items-center justify-center rounded-full text-stone-500 disabled:opacity-30'
   const stepClass = 'flex size-10 items-center justify-center rounded-full bg-stone-100 text-xl disabled:opacity-30'
-  const smallStepClass = 'flex size-8 items-center justify-center rounded-full bg-stone-100 disabled:opacity-30'
 
   // Вложенные панели — не внутри подложки: нажатие на их подложку не должно закрывать и эту
   return (
@@ -158,32 +170,43 @@ export function AddSheet({ today, onClose }: { today: Date; onClose: () => void 
           <div className="flex-1 overflow-y-auto">
             <div className="px-4 pb-2">
               {selected.length === 0 ? (
-                <p className="py-1 text-sm text-stone-400">Выберите проекты и сколько помидоров потока занимал каждый</p>
+                <p className="py-1 text-sm text-stone-400">Выберите проекты и отметьте на шкале, какую часть потока занимал каждый</p>
               ) : (
                 <>
-                  <ul className="flex flex-col gap-1">
-                    {selected.map(({ project, count }) => (
-                      <li key={project.id} className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1">
+                  {/* Покрытие потока: пустые помидоры ещё не отданы проектам, штрихованные — параллельные */}
+                  <div className="flex h-3 gap-0.5">
+                    {cover.map((c, i) => (
+                      <span
+                        key={i}
+                        className={`flex-1 rounded-sm ${c === 0 ? 'border border-dashed border-amber-500' : c === 1 ? 'bg-tomato' : 'bg-tomato-hatch'}`}
+                      />
+                    ))}
+                  </div>
+                  <p className={`mt-1 mb-2 text-sm ${uncovered ? 'text-amber-700' : 'text-stone-500'}`}>
+                    {uncovered
+                      ? `Не отмечено ${uncovered} ${pluralRu(uncovered, ['помидор', 'помидора', 'помидоров'])}`
+                      : parallel
+                        ? `Весь поток отмечен · ${parallel} параллельно`
+                        : 'Весь поток отмечен'}
+                  </p>
+                  <ul className="flex flex-col gap-2">
+                    {selected.map(({ project, span }) => (
+                      <li key={project.id}>
+                        <div className="flex items-center justify-between">
                           <ProjectChip project={project} onClick={() => toggle(project)} />
-                        </span>
-                        <button type="button" aria-label={`Меньше «${project.name}»`} className={smallStepClass} disabled={count === 1} onClick={() => setCount(project.id, count - 1)}>
-                          −
-                        </button>
-                        <span className="w-6 text-center font-medium tabular-nums">{count}</span>
-                        <button type="button" aria-label={`Больше «${project.name}»`} className={smallStepClass} disabled={count === length} onClick={() => setCount(project.id, count + 1)}>
-                          +
-                        </button>
+                          <span className="text-sm text-stone-500 tabular-nums">
+                            {spanLength(span)} {pluralRu(spanLength(span), ['помидор', 'помидора', 'помидоров'])}
+                          </span>
+                        </div>
+                        <RangeTrack
+                          length={length}
+                          span={span}
+                          color={projectColors[project.color % projectColors.length].dot}
+                          onChange={(next) => setSpan(project.id, next)}
+                        />
                       </li>
                     ))}
                   </ul>
-                  <p className={`mt-1.5 text-sm ${sum < length ? 'text-amber-700' : 'text-stone-500'}`}>
-                    {sum < length
-                      ? `Осталось распределить ${length - sum} ${pluralRu(length - sum, ['помидор', 'помидора', 'помидоров'])}`
-                      : sum === length
-                        ? 'Распределено полностью'
-                        : `Распределено ${sum} из ${length} · ${sum - length} параллельно`}
-                  </p>
                 </>
               )}
             </div>
@@ -275,10 +298,10 @@ export function AddSheet({ today, onClose }: { today: Date; onClose: () => void 
           </div>
 
           <div className="px-4 pt-2">
-            {/* Поток добавляется, только когда распределены все его помидоры */}
+            {/* Поток добавляется, только когда каждый его помидор отмечен хотя бы у одного проекта */}
             <button
               type="button"
-              disabled={selected.length === 0 || sum < length}
+              disabled={selected.length === 0 || uncovered > 0}
               onClick={() => void add()}
               className="w-full rounded-2xl bg-tomato py-3 font-medium text-white disabled:opacity-40"
             >

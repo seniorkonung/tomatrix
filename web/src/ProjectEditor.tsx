@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { archiveProject, db, deleteProject, projectColors, restoreProject, type Project } from './db'
+import { spanLength } from './flows'
 import { pluralRu } from './plural'
 import { useProjectTabs } from './projectTabs'
 
@@ -9,13 +10,13 @@ const dateFormat = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'lo
 export function ProjectEditor({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const project = useLiveQuery(() => db.projects.get(projectId), [projectId])
   const tabs = useProjectTabs()
-  const flows = useLiveQuery(() => db.flows.filter((f) => projectId in f.counts).toArray(), [projectId])
+  const flows = useLiveQuery(() => db.flows.filter((f) => projectId in f.spans).toArray(), [projectId])
   if (!project || !tabs || !flows) return null
   // Категории в порядке вкладок выбора проектов
   const categories = tabs.flatMap((t) => (t.kind === 'category' ? [t.category] : []))
-  const count = flows.reduce((sum, f) => sum + f.counts[projectId], 0)
+  const count = flows.reduce((sum, f) => sum + spanLength(f.spans[projectId]), 0)
   // Потоки только этого проекта при удалении пропадают целиком, в остальных он просто снимается
-  const own = flows.filter((f) => Object.keys(f.counts).length === 1).length
+  const own = flows.filter((f) => Object.keys(f.spans).length === 1).length
   return <Form key={project.id} project={project} categories={categories} count={count} own={own} onClose={onClose} />
 }
 
