@@ -6,7 +6,3 @@
 
 html { background: var(--color-stone-50); }
 
-/* Параллельный помидор: штриховка вместо сплошной заливки — во времени его нет */
-@utility bg-tomato-hatch {
-  background: repeating-linear-gradient(-45deg, var(--color-tomato) 0 3px, color-mix(in srgb, var(--color-tomato) 25%, white) 3px 6px);
-}

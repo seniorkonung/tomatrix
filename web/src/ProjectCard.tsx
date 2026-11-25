@@ -29,7 +29,7 @@ export function ProjectCard({
   onEdit: () => void
   // Помидор только этому проекту: вернуть случайно снятый там же, где его сняли
   onAdd: () => void
-  onRemove: (flow: Flow) => void
+  onRemove: (cell: Cell<Flow>) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const count = cells.length
@@ -50,14 +50,17 @@ export function ProjectCard({
         <div className="h-full rounded-full bg-tomato" style={{ width: `${(count / total) * 100}%` }} />
       </div>
       <div className="mt-3 grid grid-cols-10 gap-1">
-        {shown.map((cell, i) => (
+        {shown.map((cell) => (
           <button
-            key={`${cell.flow.id}-${i}`}
+            key={`${cell.flow.id}-${cell.slot}`}
             type="button"
             aria-label={cell.parallel ? 'Снять параллельный помидор' : 'Снять помидор'}
-            onClick={() => onRemove(cell.flow)}
-            className={`aspect-square rounded-md ${cell.parallel ? 'bg-tomato-hatch' : 'bg-tomato'}`}
-          />
+            onClick={() => onRemove(cell)}
+            className="flex aspect-square items-center justify-center rounded-md bg-tomato"
+          >
+            {/* В этом помидоре шли и другие проекты; у них он отмечен так же */}
+            {cell.parallel && <span className="size-1.5 rounded-full bg-white/80" />}
+          </button>
         ))}
         <button
           type="button"

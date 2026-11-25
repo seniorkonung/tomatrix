@@ -6,7 +6,7 @@ import { addFlow, db, removeFromFlow, type Flow } from './db'
 import { formatMinutes, POMODORO_MINUTES } from './format'
 import { periodLabel, periodOf, startOfDay, type Unit } from './periods'
 import { pluralRu } from './plural'
-import { cellsOf, spanLength, type Cell } from './flows'
+import { allSlots, cellsOf, type Cell } from './flows'
 import { ProjectCard } from './ProjectCard'
 import { ProjectEditor } from './ProjectEditor'
 import { useProjectTabs } from './projectTabs'
@@ -63,9 +63,7 @@ export default function App() {
   // Время — по длине потоков; у проекта — его помидоры в них, клетка на каждый
   const total = flows.reduce((sum, f) => sum + f.length, 0)
   const byProject = new Map<string, Cell<Flow>[]>()
-  for (const f of flows) for (const id of Object.keys(f.spans)) byProject.set(id, [...(byProject.get(id) ?? []), ...cellsOf(f, id)])
-  // Помидоры сверх длины потоков: проекты шли параллельно, во времени их нет
-  const parallel = flows.reduce((sum, f) => sum + Object.values(f.spans).reduce((a, span) => a + spanLength(span), 0) - f.length, 0)
+  for (const f of flows) for (const id of Object.keys(f.slots)) byProject.set(id, [...(byProject.get(id) ?? []), ...cellsOf(f, id)])
   // Проекты в архиве хранят категорию, поэтому отбираются так же, как активные
   const rows = projects
     .filter((project) => chosen.length === 0 || chosen.includes(project.categoryId))
@@ -127,7 +125,6 @@ export default function App() {
           <span className="block text-3xl font-semibold tabular-nums">{total}</span>
           <span className="text-sm text-stone-500">
             {pluralRu(total, ['помидор', 'помидора', 'помидоров'])} {unitTotals[unit]} · {formatMinutes(total * POMODORO_MINUTES)}
-            {parallel > 0 && ` · ещё ${parallel} параллельно`}
           </span>
         </div>
 
@@ -160,8 +157,8 @@ export default function App() {
                 cells={cells}
                 total={total}
                 onEdit={() => setEditingId(project.id)}
-                onAdd={() => void addFlow(1, { [project.id]: [0, 1] }, [project], addDay)}
-                onRemove={(flow) => void removeFromFlow(flow.id, project.id)}
+                onAdd={() => void addFlow(1, allSlots([project.id], 1), [project], addDay)}
+                onRemove={(cell) => void removeFromFlow(cell.flow.id, project.id, cell.slot)}
               />
             ))}
             {rows.length === 0 && <li className="py-4 text-center text-sm text-stone-400">У проектов выбранных категорий нет помидоров за период</li>}

@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import { compact, layoutCounts, type Spans } from './flows'
+import { compact, layoutCounts, type Slots } from './flows'
 import { periodStart } from './periods'
 
 export type ProjectStatus = 'active' | 'archived'
@@ -27,13 +27,13 @@ export type Category = {
 }
 
 // Поток — отрезок времени длиной в целое число помидоров по 20 минут. Каждый проект занимал в нём
-// свой отрезок; отрезки вместе покрывают весь поток, а где пересекаются — проекты шли параллельно
+// свои помидоры; вместе они покрывают весь поток, а помидор нескольких проектов — время, когда они шли параллельно
 export type Flow = {
   id: string
   createdAt: number
   length: number
-  // id проекта → его отрезок на шкале потока
-  spans: Spans
+  // id проекта → номера его помидоров в потоке
+  slots: Slots
 }
 
 // Настройки приложения по ключу
@@ -153,6 +153,18 @@ db.version(6)
     })
   })
 
+// Проект занимает в потоке любые помидоры, не обязательно подряд: отрезки стали номерами помидоров
+db.version(7)
+  .stores({})
+  .upgrade(async (tx) => {
+    await tx.table('flows').toCollection().modify((flow) => {
+      flow.slots = Object.fromEntries(
+        Object.entries(flow.spans as Record<string, [number, number]>).map(([id, [start, end]]) => [id, Array.from({ length: end - start }, (_, i) => start + i)]),
+      )
+      delete flow.spans
+    })
+  })
+
 // Новый проект получает цвет, который реже всего встречается у активных проектов, — соседние не сливаются
 export async function createProject(name: string, categoryId: string | null) {
   const active = await db.projects.where('status').equals('active').toArray()
@@ -189,9 +201,9 @@ export async function restoreProject(project: Project) {
 // Проект снимается со всех потоков; поток только этого проекта удаляется
 export async function deleteProject(projectId: string) {
   await db.transaction('rw', db.projects, db.flows, async () => {
-    const flows = await db.flows.filter((f) => projectId in f.spans).toArray()
+    const flows = await db.flows.filter((f) => projectId in f.slots).toArray()
     for (const flow of flows) {
-      const { [projectId]: _, ...rest } = flow.spans
+      const { [projectId]: _, ...rest } = flow.slots
       await saveFlow(flow, rest)
     }
     await db.projects.delete(projectId)
@@ -208,28 +220,27 @@ export async function deleteCategory(categoryId: string) {
 
 // Поток в выбранный день получает нынешнее время суток этого дня.
 // Проекты из архива, которым он посвящён, возвращаются из него
-export async function addFlow(length: number, spans: Spans, projects: Project[], day: Date) {
+export async function addFlow(length: number, slots: Slots, projects: Project[], day: Date) {
   const now = new Date()
   const createdAt = day.getTime() + now.getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   await db.transaction('rw', db.flows, db.projects, db.categories, async () => {
-    await db.flows.add({ id: crypto.randomUUID(), createdAt, length, spans })
+    await db.flows.add({ id: crypto.randomUUID(), createdAt, length, slots })
     for (const p of projects) if (p.status === 'archived') await restoreProject(p)
   })
 }
 
-// Снимает последний помидор отрезка проекта в потоке. Поток перечитывается: быстрые нажатия подряд видят уже изменённый
-export async function removeFromFlow(flowId: string, projectId: string) {
+// Снимает один помидор проекта в потоке. Поток перечитывается: быстрые нажатия подряд видят уже изменённый
+export async function removeFromFlow(flowId: string, projectId: string, slot: number) {
   await db.transaction('rw', db.flows, async () => {
     const flow = await db.flows.get(flowId)
-    if (!flow || !(projectId in flow.spans)) return
-    const { [projectId]: [start, end], ...rest } = flow.spans
-    await saveFlow(flow, end - 1 > start ? { ...rest, [projectId]: [start, end - 1] } : rest)
+    if (!flow?.slots[projectId]?.includes(slot)) return
+    await saveFlow(flow, { ...flow.slots, [projectId]: flow.slots[projectId].filter((i) => i !== slot) })
   })
 }
 
 // Помидоры, которые больше никто не покрывает, убираются из потока; поток без проектов удаляется
-async function saveFlow(flow: Flow, spans: Spans) {
-  const next = compact(spans, flow.length)
+async function saveFlow(flow: Flow, slots: Slots) {
+  const next = compact(slots, flow.length)
   if (next.length === 0) await db.flows.delete(flow.id)
   else await db.flows.put({ ...flow, ...next })
 }
