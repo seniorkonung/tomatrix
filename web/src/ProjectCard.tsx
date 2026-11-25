@@ -7,7 +7,6 @@ const COLLAPSE_OVER = 30
 const COLLAPSED = 20
 
 function percent(count: number, total: number) {
-  if (count === 0) return '0%'
   const value = (count / total) * 100
   return value < 1 ? '<1%' : `${Math.round(value)}%`
 }
@@ -47,7 +46,7 @@ export function ProjectCard({
         <span className="w-10 shrink-0 text-right text-sm text-stone-500 tabular-nums">{percent(count, total)}</span>
       </div>
       <div className="mt-2 h-1 rounded-full bg-stone-100">
-        <div className="h-full rounded-full bg-tomato" style={{ width: `${total ? (count / total) * 100 : 0}%` }} />
+        <div className="h-full rounded-full bg-tomato" style={{ width: `${(count / total) * 100}%` }} />
       </div>
       <div className="mt-3 grid grid-cols-10 gap-1">
         {shown.map((p) => (
