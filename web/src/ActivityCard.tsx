@@ -1,9 +1,15 @@
 import { useRef } from 'react'
 import type { Activity, Pomodoro } from './db'
-import { emptyCell, fillCell, toggleLink } from './pomodoros'
+import { emptyCell, fillCell } from './pomodoros'
 
-// Общий помидор, ячейки которого сейчас связываются
-export type Linking = { pomodoro: Pomodoro; activityId: string }
+// Выбор ячеек, на которые потрачен один и тот же помидор. Пока выбор не применён, база не меняется
+export type Linking = {
+  pomodoroId: string
+  // Занятие, в ячейке которого начат выбор
+  activityId: string
+  // id занятия → помидор, чья ячейка в нём выбрана
+  selected: Record<string, string>
+}
 
 // Занятие в ленте: цель за период — пустые ячейки, потраченные помидоры их заполняют
 export function ActivityCard({
@@ -12,6 +18,7 @@ export function ActivityCard({
   linking,
   onEdit,
   onStartLinking,
+  onToggleLink,
 }: {
   activity: Activity
   // Помидоры занятия за текущий период
@@ -19,15 +26,13 @@ export function ActivityCard({
   linking: Linking | null
   onEdit: () => void
   onStartLinking: (pomodoro: Pomodoro) => void
+  onToggleLink: (pomodoro: Pomodoro) => void
 }) {
   const byIndex = new Map(pomodoros.map((p) => [p.cells[activity.id], p]))
   const size = Math.max(activity.goal, ...[...byIndex.keys()].map((i) => i + 1))
   const reached = pomodoros.length >= activity.goal
   // Когда все ячейки заполнены, помидор можно потратить сверх цели в следующей
   const total = pomodoros.length >= size ? size + 1 : size
-
-  // В занятии уже есть ячейка связываемого помидора — другие его ячейки здесь не трогаются
-  const linkedIndex = linking?.pomodoro.cells[activity.id]
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm">
@@ -40,9 +45,9 @@ export function ActivityCard({
       <div className="mt-3 flex flex-wrap gap-1.5">
         {Array.from({ length: total }, (_, index) => {
           const pomodoro = byIndex.get(index)
-          const isSource = linking?.activityId === activity.id
-          const linked = !!linking && pomodoro?.id === linking.pomodoro.id
-          const active = !linking || (!isSource && (linkedIndex === undefined || linkedIndex === index))
+          const linked = !!linking && !!pomodoro && linking.selected[activity.id] === pomodoro.id
+          // При выборе новые помидоры не создаются: выбираются только заполненные ячейки других занятий
+          const active = !linking || (!!pomodoro && linking.activityId !== activity.id)
           return (
             <Cell
               key={index}
@@ -52,7 +57,7 @@ export function ActivityCard({
               dimmed={!active && !linked}
               disabled={!active}
               onTap={() => {
-                if (linking) void toggleLink(linking.pomodoro, activity.id, index, pomodoro)
+                if (linking) onToggleLink(pomodoro!)
                 else if (pomodoro) void emptyCell(pomodoro, activity.id)
                 else void fillCell(activity.id, index)
               }}

@@ -1,10 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
-import { ActivityCard } from './ActivityCard'
+import { ActivityCard, type Linking } from './ActivityCard'
 import { ActivitySheet } from './ActivitySheet'
 import { db, type Activity } from './db'
 import { periodStart, startOfDay, startOfWeek } from './periods'
 import { pluralRu } from './plural'
+import { linkCells } from './pomodoros'
 
 const POMODORO_MINUTES = 20
 
@@ -37,9 +38,7 @@ export default function App() {
 
   const [editing, setEditing] = useState<Activity | 'new' | null>(null)
   // Долгое нажатие на ячейку: какие ячейки других занятий — тот же помидор
-  const [linkingIds, setLinkingIds] = useState<{ pomodoroId: string; activityId: string } | null>(null)
-  const linkingPomodoro = pomodoros?.find((p) => p.id === linkingIds?.pomodoroId)
-  const linking = linkingIds && linkingPomodoro ? { pomodoro: linkingPomodoro, activityId: linkingIds.activityId } : null
+  const [linking, setLinking] = useState<Linking | null>(null)
 
   if (!activities || !pomodoros) return null
 
@@ -70,7 +69,17 @@ export default function App() {
             pomodoros={pomodoros.filter((p) => p.createdAt >= since && a.id in p.cells)}
             linking={linking}
             onEdit={() => setEditing(a)}
-            onStartLinking={(p) => setLinkingIds({ pomodoroId: p.id, activityId: a.id })}
+            onStartLinking={(p) =>
+              setLinking({ pomodoroId: p.id, activityId: a.id, selected: Object.fromEntries(Object.keys(p.cells).map((id) => [id, p.id])) })
+            }
+            onToggleLink={(p) =>
+              setLinking((l) => {
+                if (!l) return l
+                // В занятии выбирается одна ячейка: повторное нажатие снимает выбор, другая ячейка его переносит
+                const { [a.id]: current, ...rest } = l.selected
+                return { ...l, selected: current === p.id ? rest : { ...rest, [a.id]: p.id } }
+              })
+            }
           />
         )
       })}
@@ -82,8 +91,17 @@ export default function App() {
       {editing && <ActivitySheet activity={editing === 'new' ? undefined : editing} onClose={() => setEditing(null)} />}
       {linking && (
         <div className="sticky bottom-[max(1rem,env(safe-area-inset-bottom))] mt-auto flex items-center gap-3 rounded-2xl bg-stone-900 p-3 pl-4 text-sm text-white shadow-lg">
-          <span className="flex-1">Отметьте ячейки других занятий, на которые потрачен этот же помидор</span>
-          <button onClick={() => setLinkingIds(null)} className="rounded-xl bg-white px-4 py-2 font-medium text-stone-900">
+          <span className="flex-1">Выберите ячейки других занятий, на которые потрачен этот же помидор</span>
+          <button onClick={() => setLinking(null)} className="rounded-xl px-2 py-2 text-stone-300">
+            Отмена
+          </button>
+          <button
+            onClick={() => {
+              void linkCells(linking.pomodoroId, linking.selected)
+              setLinking(null)
+            }}
+            className="rounded-xl bg-white px-4 py-2 font-medium text-stone-900"
+          >
             Готово
           </button>
         </div>
