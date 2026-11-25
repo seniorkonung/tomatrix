@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { db, type Activity, type Period } from './db'
+import { db, type Activity, type GoalKind, type Period } from './db'
 import { pluralRu } from './plural'
 import { emptyCell } from './pomodoros'
 import { Sheet } from './Sheet'
@@ -8,13 +8,14 @@ import { Sheet } from './Sheet'
 export function ActivitySheet({ activity, onClose }: { activity?: Activity; onClose: () => void }) {
   const [name, setName] = useState(activity?.name ?? '')
   const [goal, setGoal] = useState(activity?.goal ?? 3)
+  const [goalKind, setGoalKind] = useState<GoalKind>(activity?.goalKind ?? 'min')
   const [period, setPeriod] = useState<Period>(activity?.period ?? 'day')
 
   async function save() {
     const trimmed = name.trim()
     if (!trimmed) return
     if (activity) {
-      await db.activities.update(activity.id, { name: trimmed, goal, period })
+      await db.activities.update(activity.id, { name: trimmed, goal, goalKind, period })
     } else {
       const last = await db.activities.orderBy('order').last()
       await db.activities.add({
@@ -23,6 +24,7 @@ export function ActivitySheet({ activity, onClose }: { activity?: Activity; onCl
         createdAt: Date.now(),
         order: (last?.order ?? 0) + 1,
         goal,
+        goalKind,
         period,
       })
     }
@@ -56,7 +58,15 @@ export function ActivitySheet({ activity, onClose }: { activity?: Activity; onCl
           placeholder="Название занятия"
           className="rounded-xl bg-stone-100 px-3 py-2.5 text-base outline-none"
         />
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Segmented
+            value={goalKind}
+            options={[
+              ['min', 'не меньше'],
+              ['max', 'не больше'],
+            ]}
+            onChange={setGoalKind}
+          />
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => setGoal((g) => Math.max(1, g - 1))} className="size-9 rounded-full bg-stone-100 text-lg">
               −
@@ -68,18 +78,14 @@ export function ActivitySheet({ activity, onClose }: { activity?: Activity; onCl
               +
             </button>
           </div>
-          <div className="flex rounded-full bg-stone-100 p-0.5 text-sm">
-            {(['day', 'week'] as const).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPeriod(p)}
-                className={`rounded-full px-3 py-1.5 ${period === p ? 'bg-white shadow-sm' : 'text-stone-500'}`}
-              >
-                {p === 'day' ? 'в день' : 'в неделю'}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            value={period}
+            options={[
+              ['day', 'в день'],
+              ['week', 'в неделю'],
+            ]}
+            onChange={setPeriod}
+          />
         </div>
         <div className="flex gap-2">
           {activity && (
@@ -93,5 +99,22 @@ export function ActivitySheet({ activity, onClose }: { activity?: Activity; onCl
         </div>
       </form>
     </Sheet>
+  )
+}
+
+function Segmented<T extends string>({ value, options, onChange }: { value: T; options: [T, string][]; onChange: (value: T) => void }) {
+  return (
+    <div className="flex rounded-full bg-stone-100 p-0.5 text-sm">
+      {options.map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onChange(v)}
+          className={`rounded-full px-3 py-1.5 ${value === v ? 'bg-white shadow-sm' : 'text-stone-500'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   )
 }

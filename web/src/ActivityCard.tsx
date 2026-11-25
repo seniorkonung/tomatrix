@@ -30,7 +30,9 @@ export function ActivityCard({
 }) {
   const byIndex = new Map(pomodoros.map((p) => [p.cells[activity.id], p]))
   const size = Math.max(activity.goal, ...[...byIndex.keys()].map((i) => i + 1))
-  const reached = pomodoros.length >= activity.goal
+  const count = pomodoros.length
+  // «Не меньше» радует выполнением, «не больше» предупреждает о превышении
+  const status = activity.goalKind === 'min' ? (count >= activity.goal ? 'text-emerald-600' : 'text-stone-400') : count > activity.goal ? 'text-amber-600' : 'text-stone-400'
   // Когда все ячейки заполнены, помидор можно потратить сверх цели в следующей
   const total = pomodoros.length >= size ? size + 1 : size
 
@@ -38,8 +40,9 @@ export function ActivityCard({
     <section className="rounded-2xl bg-white p-4 shadow-sm">
       <button onClick={onEdit} disabled={!!linking} className="flex w-full items-baseline justify-between gap-3 text-left">
         <h2 className="truncate font-semibold">{activity.name}</h2>
-        <span className={`shrink-0 text-sm tabular-nums ${reached ? 'text-emerald-600' : 'text-stone-400'}`}>
-          {pomodoros.length} / {activity.goal} {activity.period === 'day' ? 'сегодня' : 'за неделю'}
+        <span className={`shrink-0 text-sm tabular-nums ${status}`}>
+          {count} / {activity.goalKind === 'min' ? '≥' : '≤'}
+          {activity.goal} {activity.period === 'day' ? 'сегодня' : 'за неделю'}
         </span>
       </button>
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -53,6 +56,7 @@ export function ActivityCard({
               key={index}
               pomodoro={pomodoro}
               extra={index >= size}
+              unplanned={index >= activity.goal}
               linked={linked}
               dimmed={!active && !linked}
               disabled={!active}
@@ -75,6 +79,7 @@ const LONG_PRESS_MS = 450
 function Cell({
   pomodoro,
   extra,
+  unplanned,
   linked,
   dimmed,
   disabled,
@@ -83,6 +88,8 @@ function Cell({
 }: {
   pomodoro: Pomodoro | undefined
   extra: boolean
+  // Ячейка сверх цели: помидор в ней не был запланирован
+  unplanned: boolean
   linked: boolean
   dimmed: boolean
   disabled: boolean
@@ -118,7 +125,7 @@ function Cell({
       }}
       className={`flex size-9 touch-manipulation items-center justify-center rounded-lg select-none [-webkit-touch-callout:none] transition-opacity ${dimmed ? 'opacity-30' : ''} ${
         pomodoro
-          ? 'animate-pop bg-tomato'
+          ? `animate-pop ${unplanned ? 'bg-tomato/50' : 'bg-tomato'}`
           : extra
             ? 'text-lg text-stone-300'
             : 'border-2 border-dashed border-stone-300'

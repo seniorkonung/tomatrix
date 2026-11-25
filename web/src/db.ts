@@ -3,6 +3,9 @@ import { periodStart } from './periods'
 
 export type Period = 'day' | 'week'
 
+// Цель — не меньше помидоров за период или не больше. Число ячеек задаёт в обоих случаях
+export type GoalKind = 'min' | 'max'
+
 // Важное занятие, между которыми распределяется внимание
 export type Activity = {
   id: string
@@ -12,6 +15,7 @@ export type Activity = {
   order: number
   // Сколько помидоров хочется потратить на занятие за период
   goal: number
+  goalKind: GoalKind
   period: Period
 }
 
@@ -53,4 +57,13 @@ db.version(2)
       delete p.activityIds
     }
     await tx.table('pomodoros').bulkPut(pomodoros)
+  })
+
+// У цели появился вид; прежние цели означали «не меньше»
+db.version(3)
+  .stores({})
+  .upgrade(async (tx) => {
+    await tx.table('activities').toCollection().modify((activity) => {
+      activity.goalKind ??= 'min'
+    })
   })
