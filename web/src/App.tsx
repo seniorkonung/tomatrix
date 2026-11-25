@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import { AddSheet } from './AddSheet'
+import { ErrorToast } from './ErrorToast'
 import { addPomodoros, db, type Pomodoro } from './db'
 import { formatMinutes, POMODORO_MINUTES } from './format'
 import { periodLabel, periodOf, startOfDay, type Unit } from './periods'
@@ -84,88 +85,91 @@ export default function App() {
   const tabClass = (active: boolean) => `shrink-0 rounded-full px-3 py-1.5 text-sm ${active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`
   const arrowClass = 'flex size-9 items-center justify-center rounded-full disabled:opacity-30'
 
+  // Панели — вне корня со свайпом: движение пальца в них не листает период и не съедает нажатия
   return (
-    <div
-      ref={root}
-      className="mx-auto flex min-h-dvh max-w-xl touch-pan-y flex-col px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(6rem+env(safe-area-inset-bottom))]"
-    >
-      <div className="flex gap-2">
-        {(Object.keys(unitLabels) as Unit[]).map((u) => (
-          <button
-            key={u}
-            type="button"
-            className={tabClass(unit === u)}
-            onClick={() => {
-              setUnit(u)
-              setOffset(0)
-            }}
-          >
-            {unitLabels[u]}
-          </button>
-        ))}
-      </div>
-
-      <div className="-mx-2 flex items-center gap-2 py-2">
-        <button type="button" aria-label="Предыдущий период" className={arrowClass} onClick={() => shift(-1)}>
-          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
-        </button>
-        {/* Нажатие возвращает к текущему периоду */}
-        <button type="button" className="flex-1 text-center font-medium" onClick={() => setOffset(0)}>
-          {periodLabel(unit, start, end, now)}
-          {offset === 0 && unit === 'day' && <span className="ml-2 rounded-md bg-tomato/10 px-1.5 py-0.5 text-sm text-tomato">Сегодня</span>}
-        </button>
-        <button type="button" aria-label="Следующий период" className={arrowClass} disabled={offset === 0} onClick={() => shift(1)}>
-          <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m9 18 6-6-6-6" />
-          </svg>
-        </button>
-      </div>
-
-      <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-        <span className="block text-3xl font-semibold tabular-nums">{total}</span>
-        <span className="text-sm text-stone-500">
-          {pluralRu(total, ['помидор', 'помидора', 'помидоров'])} {unitTotals[unit]} · {formatMinutes(total * POMODORO_MINUTES)}
-        </span>
-      </div>
-
-      {total > 0 && categories.length > 0 && (
-        <div className="mt-4 -mb-1 flex gap-1.5 overflow-x-auto">
-          <button type="button" className={tabClass(chosen.length === 0)} onClick={() => db.settings.put({ id: 'statsCategories', value: [] })}>
-            Все проекты
-          </button>
-          {categories.map((c) => (
-            <button key={c.id} type="button" className={tabClass(chosen.includes(c.id))} onClick={() => void toggleCategory(c.id)}>
-              {c.name}
+    <>
+      <div
+        ref={root}
+        className="mx-auto flex min-h-dvh max-w-xl touch-pan-y flex-col px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(6rem+env(safe-area-inset-bottom))]"
+      >
+        <div className="flex gap-2">
+          {(Object.keys(unitLabels) as Unit[]).map((u) => (
+            <button
+              key={u}
+              type="button"
+              className={tabClass(unit === u)}
+              onClick={() => {
+                setUnit(u)
+                setOffset(0)
+              }}
+            >
+              {unitLabels[u]}
             </button>
           ))}
-          <button type="button" className={tabClass(chosen.includes(null))} onClick={() => void toggleCategory(null)}>
-            Без категории
+        </div>
+
+        <div className="-mx-2 flex items-center gap-2 py-2">
+          <button type="button" aria-label="Предыдущий период" className={arrowClass} onClick={() => shift(-1)}>
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+          {/* Нажатие возвращает к текущему периоду */}
+          <button type="button" className="flex-1 text-center font-medium" onClick={() => setOffset(0)}>
+            {periodLabel(unit, start, end, now)}
+            {offset === 0 && unit === 'day' && <span className="ml-2 rounded-md bg-tomato/10 px-1.5 py-0.5 text-sm text-tomato">Сегодня</span>}
+          </button>
+          <button type="button" aria-label="Следующий период" className={arrowClass} disabled={offset === 0} onClick={() => shift(1)}>
+            <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
           </button>
         </div>
-      )}
 
-      {total === 0 ? (
-        <p className="px-1 py-8 text-center text-stone-400">
-          {projects.length === 0 ? 'Нажмите +, чтобы добавить первые помидоры и проекты, которым они посвящены' : 'Помидоров за этот период нет'}
-        </p>
-      ) : (
-        <ul className="mt-4 flex flex-col gap-2">
-          {rows.map(({ project, pomodoros }) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              pomodoros={pomodoros}
-              total={total}
-              onEdit={() => setEditingId(project.id)}
-              onAdd={() => void addPomodoros(1, [project], addDay)}
-              onRemove={remove}
-            />
-          ))}
-          {rows.length === 0 && <li className="py-4 text-center text-sm text-stone-400">У проектов выбранных категорий нет помидоров за период</li>}
-        </ul>
-      )}
+        <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
+          <span className="block text-3xl font-semibold tabular-nums">{total}</span>
+          <span className="text-sm text-stone-500">
+            {pluralRu(total, ['помидор', 'помидора', 'помидоров'])} {unitTotals[unit]} · {formatMinutes(total * POMODORO_MINUTES)}
+          </span>
+        </div>
+
+        {total > 0 && categories.length > 0 && (
+          <div className="mt-4 -mb-1 flex gap-1.5 overflow-x-auto">
+            <button type="button" className={tabClass(chosen.length === 0)} onClick={() => db.settings.put({ id: 'statsCategories', value: [] })}>
+              Все проекты
+            </button>
+            {categories.map((c) => (
+              <button key={c.id} type="button" className={tabClass(chosen.includes(c.id))} onClick={() => void toggleCategory(c.id)}>
+                {c.name}
+              </button>
+            ))}
+            <button type="button" className={tabClass(chosen.includes(null))} onClick={() => void toggleCategory(null)}>
+              Без категории
+            </button>
+          </div>
+        )}
+
+        {total === 0 ? (
+          <p className="px-1 py-8 text-center text-stone-400">
+            {projects.length === 0 ? 'Нажмите +, чтобы добавить первые помидоры и проекты, которым они посвящены' : 'Помидоров за этот период нет'}
+          </p>
+        ) : (
+          <ul className="mt-4 flex flex-col gap-2">
+            {rows.map(({ project, pomodoros }) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                pomodoros={pomodoros}
+                total={total}
+                onEdit={() => setEditingId(project.id)}
+                onAdd={() => void addPomodoros(1, [project], addDay)}
+                onRemove={remove}
+              />
+            ))}
+            {rows.length === 0 && <li className="py-4 text-center text-sm text-stone-400">У проектов выбранных категорий нет помидоров за период</li>}
+          </ul>
+        )}
+      </div>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 mx-auto flex max-w-xl justify-end px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <button
@@ -187,6 +191,7 @@ export default function App() {
           onClose={() => setRemoving(null)}
         />
       )}
-    </div>
+      <ErrorToast />
+    </>
   )
 }
