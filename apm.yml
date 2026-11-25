@@ -1,0 +1,58 @@
+name: tomatrix
+version: 0.0.1
+targets:
+  - claude
+  - codex
+  - agent-skills
+dependencies:
+  apm:
+    - git: seniorkonung/agent-skills
+      ref: main
+      path: profiles/productivity
+    - git: seniorkonung/agent-skills
+      ref: main
+      path: profiles/engineering
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-update-change
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-verify-change
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-sync-specs
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-propose
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-new-change
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-explore
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-continue-change
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-archive-change
+    - git: Fission-AI/OpenSpec
+      ref: v2.0.0
+      path: skills/openspec-apply-change
+  mcp:
+    - name: serena
+      registry: false
+      transport: stdio
+      command: mise
+      args:
+        - exec
+        - --
+        - serena
+        - start-mcp-server
+        - --context
+        - agent
+        - --project-from-cwd
+        - --enable-web-dashboard
+        - "false"
+includes: auto
+scripts: {}

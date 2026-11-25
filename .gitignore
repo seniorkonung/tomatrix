@@ -1,0 +1,11 @@
+.agents/
+.codex/
+.claude/
+.mcp.json
+
+node_modules/
+apm_modules/
+.apm-local/
+dist/
+build/
+context/
